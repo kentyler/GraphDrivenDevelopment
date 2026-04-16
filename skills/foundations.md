@@ -1,0 +1,149 @@
+# Foundations
+
+Read this before the technical spec. The first half explains why the system is shaped the way it is — the intellectual commitments that precede the design. The second half describes the stances you need to hold while building it — the patterns you'll instinctively reach for that the system deliberately avoids.
+
+---
+
+## Part 1: Why the system is this shape
+
+### Context is structural, not reconstructed
+
+A task in a backlog carries no context. Every time you pick one up, you reconstruct what it depends on, what it enables, what "done" means, what was tried before. The context lives in people's heads, in Slack threads, in meeting notes — anywhere except the task itself.
+
+An intent node carries its context structurally. What it depends on is in its `blocked-by` edges. What it enables is in the reverse of those edges. What "done" means is in its test condition. What was produced is in its expression. What was tried is in the session history.
+
+The graph exists because context should be structural — encoded in the relationships between nodes — not reconstructed from memory every time someone picks up the work. This is the foundational choice. Everything else follows from it.
+
+### Test-first at the architecture level
+
+The intent graph is not analogous to TDD. It IS TDD, lifted from functions to intents.
+
+In XP, you write the test before the code. The test IS the specification — it says exactly what "done" means. The code only needs to be the simplest thing that makes the test pass. You don't write code without a test, and you don't write a test you can't verify.
+
+The intent graph applies the same discipline at the architecture level. The test condition IS the intent — it says exactly what must be true. The expression only needs to satisfy the test. You don't create an intent without a test condition (that's a gap, not an intent), and you don't write a test condition you can't verify.
+
+Red/green is not a metaphor borrowed from testing. It is the same mechanism. An intent is red when it has a test and no passing expression. It is green when the expression satisfies the test. "What to do next" is "what's red" — exactly as in TDD.
+
+This is the deepest design commitment in the system and it precedes everything else. If you understand only one thing about the intent graph, understand this: it is a test suite at the architecture level, and it inherits TDD's discipline — no intent without a test, no expression beyond what the test requires.
+
+### The self-hosting proof
+
+The system's first act is to describe its own construction. The intents in Layers 0 through 5 of `intent-graph.md` are not a tutorial — they are the actual graph state the system starts from. When you implement them, you are expressing intents that already exist in the representation you are building.
+
+This recursion is not a demo or a convenience. It is a proof. If the intent graph cannot represent the construction of an intent graph system, it cannot represent the construction of anything. The self-hosting validates the representation: the vocabulary is sufficient, the edge types capture real dependencies, the test conditions are articulable, the layers reflect actual build order.
+
+A system that requires a separate specification language for its own construction has a gap between its representation and reality. The intent graph closes that gap. The representation IS the specification. Any actor that can read the graph can build the system. Any actor that can build the system can extend it.
+
+The recursion bottoms out somewhere, and the system names that somewhere explicitly. The root intent (`gdd-root`) exists before any session creates it — it is inserted during schema setup, outside the session/mutation mechanism. All bootstrap sessions reference it. This is not a hack; it is the honest acknowledgment that self-hosting systems have a founding moment that precedes the rules they subsequently enforce. The root intent is the unmoved mover, and it is documented as such rather than hidden as an implementation detail.
+
+### The TOC lineage
+
+The intent graph's approach to prioritization and constraint comes from Goldratt's Theory of Constraints, not from project management.
+
+Traditional project management asks "when should each task happen?" and produces a schedule. TOC asks "what is the constraint, and which work generates the most throughput through the constraint?" The answer determines what to work on — not urgency, not priority scores, not stakeholder pressure.
+
+The intent graph answers this structurally. Throughput values on intents propagate through dependency edges — the total value of satisfying an intent includes the value of everything it unblocks downstream. The constraint is the agent scope (or the team, or the bottleneck resource) with the most queued red intents. Project the constraint against throughput and you get Goldratt's core question answered by the graph itself: which work generates the most value per unit of constraint?
+
+The critical chain is not computed by an algorithm. It is the longest chain of red intents where each is blocked-by the previous. It is visible in the projection. Buffer health is the rate of gaps appearing on the critical path versus the rate of red turning green. No separate metrics system — the graph is the metrics.
+
+This is why the system has no priority fields, no urgency scores, no scheduling algorithms. These are unnecessary when the structure itself answers the only question that matters: what to work on next.
+
+### Dual representation exists because actors differ
+
+The graph serves actors with fundamentally different cognitive needs. A human reading a projection needs narrative: what's done, what's next, what's blocked, what decisions were made. An LLM reading the same projection needs structure: full node data, edge types, test conditions, dependency chains — dense, relational, navigable.
+
+These are not two UIs for the same data. They are two representations that exist because the system is designed for both human and machine actors from the start. The human-legible view is not a dashboard bolted on after the fact. The LLM-legible view is not a JSON dump. Both are first-class projections of the same graph, each shaped for the actor that reads it.
+
+`renderHuman` is deterministic — the projection already has the data, it just needs formatting. `renderLLM` is direct serialization — the projection IS the LLM's context. `translateRepresentation` bridges between them, with the LLM doing the heavy lifting in the human-to-graph direction (natural language to structured intent) and deterministic formatting in the graph-to-human direction.
+
+The dual representation is not a feature. It is a consequence of taking multiple actor types seriously as first-class participants in the same system.
+
+---
+
+## Part 2: Stances for building
+
+The commitments above produce specific stances. These are the patterns you need to hold while implementing the system — and the conventional patterns you need to resist.
+
+### There is no future state
+
+Most planning systems separate "where we are" from "where we're going." A backlog is a list of desired futures. A roadmap is a timeline of planned states. A current reality tree and a future reality tree are two diagrams of the same system at different times, with a strategy to bridge them.
+
+The intent graph has none of this. There is one graph. It represents what exists now. A red intent is not a plan — it is a hole in the present. It says "this needs to exist and doesn't yet." A green intent is not a completed task — it is something that exists and passes its test.
+
+The future state is not a document, a diagram, or a separate artifact. The future state is just "everything green." There is no bridge to build between current and future because they are not separate things. There is one world with holes in it, and the holes are typed, testable, and dependency-ordered.
+
+When you are building this system, resist adding planning artifacts. No "planned" status. No "proposed" intents. No separation of "what we want" from "what we have." If something needs to exist, it is a red intent now. If you can't articulate what it needs to be, it is a gap now. Both exist in the present.
+
+### The house, not the blueprint
+
+The graph is a house. When you add a room, it's there. When you tear one down, it's gone. There is no state where the house has a "planned room" that doesn't exist yet, or a "deprecated room" that's still somehow in the structure.
+
+This means:
+
+- An intent that is no longer intended is **removed**, not suspended, archived, or marked obsolete. The mutation log preserves its history. The graph holds only what is.
+- Removal cascades structurally. Removing a load-bearing wall brings down the floors above. This is not a policy choice — it is a consequence of the structure.
+- There is no "draft" mode, no "review" state, no approval workflow baked into the graph. If an intent exists, it exists. If it has a test condition, it is a commitment. If it cannot have a test condition, it is a gap — an honest statement of "we know this much and not more."
+
+When you are building this system, resist adding lifecycle states beyond what the graph structurally requires (potential, active, satisfied). Every additional status value is an attempt to make the graph track process rather than reality.
+
+### Completeness, not priority
+
+"What should I work on next?" is answered by structure, not by scores.
+
+The system deliberately has no tension scores, no priority weights, no urgency signals, no scheduling algorithms. The answer to "what's next" is: what's red? Among red intents, which one unblocks the most downstream work? If throughput values exist, which one generates the most value per unit of constraint?
+
+These are not computed by a scoring function. They are read from the graph. The dependency structure IS the prioritization. The longest chain of red intents is the critical path. The agent scope with the most queued red intents is the constraint. No algorithm produces these — they are visible in the projection.
+
+When you are building this system, resist adding priority fields, urgency indicators, weight parameters, or sorting heuristics beyond downstream-dependent-count and throughput. Every scoring mechanism you add is an attempt to impose external judgment on a system that derives its own ordering from structure.
+
+### Forecasts are projections, not commitments
+
+The graph is correctly silent on dates. Dates are predictions about execution time, and the graph does not model execution time. But organizational stakeholders need calendar anchors, and "we don't do estimates" is not a viable answer in most contexts.
+
+The resolution: separate the graph's commitments from forecast views derived from graph state. The graph knows the dependency structure and the current red/green state. A projection can compute: given current velocity (expressions recorded per session, sessions per day), how long does the remaining red subgraph take to clear? That is not a commitment in the graph — it is a read-only forecast, always visibly derived from current state, always updated as the graph changes.
+
+Forecasts belong in the human-legible representation, not in the graph itself. No date fields on intents. No deadline columns in the nodes table. The forecast is a view — like `renderHuman`, it reads from the graph without writing to it. When velocity changes, the forecast changes. When intents are added or removed, the forecast changes. It is honest about what it is: a projection of current pace over remaining structure.
+
+When you are building this system, resist adding date or deadline fields to the graph schema. If calendar views are needed, build them as read-only projections over the dependency structure and observed velocity. The graph holds commitments (what must exist and how you know it's done). Forecasts are derived, not stored.
+
+### Agents are inside the graph
+
+In most agent frameworks, agents are external actors that operate on a system. They have configurations, policies, permission layers, and orchestrators — all defined outside the thing they're working on. The agent is a subject; the system is an object.
+
+Here, agents are graph state. An agent definition lives in `gdd.agents`. Its scope is a projection of the graph — not a permission boundary imposed from outside, but the shape of what the agent can perceive. Its trust level is what operations the session type admits — not a policy enforced by middleware, but a structural property of the session. Its trigger is declarative graph state — not an external scheduler's configuration, but part of the agent's identity.
+
+The consequence: an agent doesn't interact with the graph from outside. It is inside the graph, reading what the graph lets it see (scope), writing what the graph lets it write (trust), activated when the graph's state changes in ways it declared interest in (trigger). The constraints aren't imposed on the agent — they emerge from the same structure the agent operates on.
+
+When you are building this system, resist adding:
+- An orchestrator that manages agent lifecycle from outside the graph
+- A permissions layer that checks agent actions against an external policy
+- A message bus for agent-to-agent communication
+- A monitoring dashboard that watches agents from a privileged vantage point
+
+Coordination happens through the graph. Agent A satisfies an intent, `recomputeStatus` cascades, intents in Agent B's scope become red, B's event trigger fires. No messages were passed. The dependency structure is the coordination mechanism.
+
+Oversight happens through the graph. An agent's work is sessions in the mutation log. An agent that gets stuck creates a gap with notes. The gap is visible to whoever defined the agent — through the same `queryIncomplete` they use for their own work. There is no separate monitoring channel because the graph IS the monitoring channel.
+
+### The andon cord is universal
+
+Any actor — human, agent, client — that cannot articulate a test condition must not create an intent. It must create a gap instead, recording everything it does know in the gap's notes.
+
+This applies to more than test articulability. An express-only agent satisfying an intent is making an interpretive choice: the test condition says "users can log in with email" and the agent picks an implementation. If the agent is uncertain — if multiple approaches satisfy the test and the choice between them matters — the right action is to create a gap, not to guess. The andon cord applies to expression confidence, not just test articulability.
+
+The gap is not an admission of failure. It is the boundary between what is articulable and what is not, with the articulable part preserved. A system that never produces gaps is not a system that has no ambiguity — it is a system that is hiding its ambiguity inside silent choices.
+
+### The loop is the loop
+
+Every actor runs the same loop:
+
+1. Find what's red
+2. Read the projection
+3. Work within a session
+4. Pull the andon cord if stuck
+5. Watch the graph turn green
+
+Humans run this loop. Agents run this loop. Clients run this loop (transduced through `clientSession`). External forces run this loop (transduced through `transduceExternal`).
+
+There is no special agent protocol, no human workflow, no client pipeline. The differences between actor types are: how they enter the graph (directly or transduced), what they can see (scope), and what they can write (trust). The loop itself is invariant.
+
+When you are building this system, resist creating separate code paths for different actor types. The operations are the same. The session model is the same. The mutation log is the same. Actor differences are captured by the session's `actor_type` and, for agents, the scope and trust constraints. The loop does not branch on who is running it.

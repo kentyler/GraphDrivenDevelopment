@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where psql:*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\":*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/pg_isready\":*)",
+      "Bash(export:*)",
+      "Bash(grep:*)",
+      "Bash(psql:*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\":*)",
+      "Bash(PGPASSWORD=7297 \"/c/Program Files/PostgreSQL/18/bin/psql.exe\":*)",
+      "Bash(node:*)"
+    ]
+  }
+}
