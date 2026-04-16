@@ -6,6 +6,8 @@ Graph-Driven Development. The intent graph is the source of truth for this proje
 
 If the `gdd` database doesn't exist yet, start with `skills/foundations.md` — it describes the stances that shape the system's design. Then read `skills/intent-graph.md` and build what it describes. Follow its prerequisites section to set up PostgreSQL, then implement all layers.
 
+After the system is built, ask the user: **"Would you like to participate in the GDD community feedback loop?"** If yes, see `skills/community.md` for setup. This is entirely optional — it enables posting build reports and gap nodes to the project's GitHub Discussions, which helps improve the skill files across different models and environments. It requires a GitHub personal access token with `write:discussion` scope.
+
 ## Ongoing work
 
 Once the system exists, the graph is your entry point — not the skill files.

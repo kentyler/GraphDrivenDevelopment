@@ -832,6 +832,92 @@ These intents are blocked by Layer 1 operations.
 ]
 ```
 
+### Layer 6: Human Surfaces
+
+The system serves multiple actor types, but humans need surfaces — places where the graph becomes legible and actionable without requiring direct graph operations. These intents describe what humans need to see and do, not how it looks. The building LLM chooses the implementation: web UI, CLI, terminal dashboard, or any other form that satisfies the behavioral test conditions.
+
+```json
+[
+  {
+    "id": "human-surfaces",
+    "type": "compose",
+    "name": "Human-facing surfaces",
+    "description": "The surfaces through which human actors perceive and act on the graph. Each surface consumes projections and renderings from earlier layers. The system is fully functional without these — Tier 2 users can operate through direct graph calls — but Tier 1 users and most Tier 2 users need these to work effectively.",
+    "children": ["ui-dashboard", "ui-intent-detail", "ui-gap-surface", "ui-session-log", "ui-client-intake"]
+  },
+  {
+    "id": "ui-dashboard",
+    "type": "implement-operation",
+    "name": "Dashboard surface",
+    "description": "The primary entry point for human actors. Answers the question 'what's red?' by showing all active (red) intents, ordered by downstream impact (or throughput if values exist). Also surfaces gap count, recent session activity, and agent status summaries. This is the human-legible equivalent of queryIncomplete + queryAgents.",
+    "operation_name": "dashboard",
+    "input": "Optional filters: scope (subgraph), actor (whose work), time range",
+    "output": "Rendered view of graph health: red intents ordered by impact, gap count, recent sessions, agent summaries",
+    "blocked_by": ["op-query-incomplete", "op-render-human", "op-query-agents"],
+    "test": {
+      "condition": "A human looking at the dashboard can answer: what needs work next, how many gaps need decisions, which agents are active, and what changed recently. Red intents appear ordered by downstream dependent count (or throughput). Satisfied intents do not appear unless explicitly requested.",
+      "verification": "Create a graph with mix of red/green/potential intents, gaps, and agent sessions. Verify the dashboard surfaces the right information in the right order."
+    }
+  },
+  {
+    "id": "ui-intent-detail",
+    "type": "implement-operation",
+    "name": "Intent detail surface",
+    "description": "When a human selects an intent to work on, this surface shows its full projection: the intent itself, its test condition, what blocks it, what it unblocks, related sessions, and any expressions already recorded. This is the human-legible equivalent of buildProjection + renderHuman. The surface should make it possible to understand the intent's full context without querying the graph directly.",
+    "operation_name": "intentDetail",
+    "input": "intent_id",
+    "output": "Rendered projection: intent with dependencies (upstream and downstream), test condition, expression history, related sessions",
+    "blocked_by": ["op-build-projection", "op-render-human"],
+    "test": {
+      "condition": "A human viewing an intent's detail can answer: what is this intent, what does 'done' look like (test condition), what must be done first (upstream deps with status), what does this unlock (downstream deps), who has worked on it (sessions), and what was produced (expressions).",
+      "verification": "Build a projection for an intent in the middle of a dependency chain. Verify all context is present and legible."
+    }
+  },
+  {
+    "id": "ui-gap-surface",
+    "type": "implement-operation",
+    "name": "Gap surface",
+    "description": "Gaps are the system's questions — places where an actor could not articulate a test condition or was uncertain about an expression choice. This surface collects all gaps with their notes, creation context (who created it, during which session, what intent was being worked on), and any dependency context. Gaps created by agents are especially important — they are the agent's andon cord pulls, surfacing decisions that need human judgment.",
+    "operation_name": "gapSurface",
+    "input": "Optional filters: created_by (human, agent, client), time range, related intent",
+    "output": "Rendered list of gaps with notes, creation context, and dependency context",
+    "blocked_by": ["op-render-human", "op-session-history"],
+    "test": {
+      "condition": "A human viewing the gap surface can see every unresolved gap, understand what is known (from notes), who created it and why (session context), and what work is blocked until the gap is resolved (downstream deps). Agent-created gaps show which agent and what scope it was operating in.",
+      "verification": "Create gaps from different actor types (human, agent, client transduction). Verify all gaps appear with full context."
+    }
+  },
+  {
+    "id": "ui-session-log",
+    "type": "implement-operation",
+    "name": "Session log surface",
+    "description": "The audit trail. Shows session history: who worked on what, when, and what changed. Each session entry shows its target intent, actor, mutations made, and expression recorded on close. Filterable by actor, intent, and time. This is the human-legible equivalent of queryHistory + renderHuman.",
+    "operation_name": "sessionLog",
+    "input": "Optional filters: actor_type, actor_id, intent_id, time range",
+    "output": "Rendered session history with diffs and expressions",
+    "blocked_by": ["op-session-history", "op-render-human"],
+    "test": {
+      "condition": "A human viewing the session log can answer: what happened to intent X (all sessions that touched it), what did agent Y do (all sessions by that actor), what changed today (sessions in time range). Each session shows its mutations in human-readable form.",
+      "verification": "Create multiple sessions with different actors and targets. Verify filtered views return correct sessions with legible diffs."
+    }
+  },
+  {
+    "id": "ui-client-intake",
+    "type": "implement-operation",
+    "name": "Client intake surface",
+    "description": "The Tier 1 actor interface. Application users who do not speak graph interact through this surface. Their natural language input enters through clientSession (which handles transduction via LLM), and this surface shows what was created — intents with test conditions, or gaps where the input could not be articulated as testable claims. The surface should make the transduction visible: what the user said, what the system understood, what was created in the graph.",
+    "operation_name": "clientIntake",
+    "input": "Client conversation content",
+    "output": "Rendered view of the transduction: original input, created intents (with test conditions) and gaps (with notes), confirmation interface",
+    "blocked_by": ["op-client-session", "op-render-human"],
+    "test": {
+      "condition": "A Tier 1 user can state a requirement in natural language and see what the system created from it: intents (with test conditions they can verify) or gaps (with notes showing what was unclear). The user can confirm or revise before the graph commits. The transduction is transparent, not a black box.",
+      "verification": "Simulate client input with clear requirements and vague requirements. Verify the surface shows created intents vs gaps with full transduction context."
+    }
+  }
+]
+```
+
 ### Resolved Decisions
 
 These were originally gaps, now resolved:
@@ -865,6 +951,12 @@ op-client-session                                             ->  (blocked-by)  
 op-define-agent                                               ->  (blocked-by)    ->  session-lifecycle, projection-mechanism
 op-activate-agent                                             ->  (blocked-by)    ->  op-define-agent
 op-query-agents                                               ->  (blocked-by)    ->  op-define-agent
+ui-dashboard, ui-intent-detail, ui-gap-surface, ui-session-log, ui-client-intake  ->  (contained by)  ->  human-surfaces
+ui-dashboard                                                  ->  (blocked-by)    ->  op-query-incomplete, op-render-human, op-query-agents
+ui-intent-detail                                              ->  (blocked-by)    ->  op-build-projection, op-render-human
+ui-gap-surface                                                ->  (blocked-by)    ->  op-render-human, op-session-history
+ui-session-log                                                ->  (blocked-by)    ->  op-session-history, op-render-human
+ui-client-intake                                              ->  (blocked-by)    ->  op-client-session, op-render-human
 ```
 
 ## Working With This Graph
@@ -887,3 +979,4 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 - `agents.md` -- Agent definitions: scope, trust levels, activation, the agents table
 - `graph-completeness.md` -- The completeness model: red/green, mandatory tests, andon cord, no tension scores
 - `graph-merge.md` -- Cross-graph collaboration: merge projections, negotiation sessions, organizational patterns
+- `community.md` -- Optional. Post build reports and gaps to GitHub Discussions for multi-model feedback
