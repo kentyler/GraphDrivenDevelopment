@@ -84,7 +84,7 @@ This means:
 - Removal cascades structurally. Removing a load-bearing wall brings down the floors above. This is not a policy choice — it is a consequence of the structure.
 - There is no "draft" mode, no "review" state, no approval workflow baked into the graph. If an intent exists, it exists. If it has a test condition, it is a commitment. If it cannot have a test condition, it is a gap — an honest statement of "we know this much and not more."
 
-When you are building this system, resist adding lifecycle states beyond what the graph structurally requires (potential, active, satisfied). Every additional status value is an attempt to make the graph track process rather than reality.
+When you are building this system, resist adding lifecycle states to intents. An intent is red (no expression) or green (has expression). That is derived from the data, not stored as a status. Every status field is an attempt to make the graph track process rather than reality.
 
 ### Completeness, not priority
 
@@ -120,7 +120,7 @@ When you are building this system, resist adding:
 - A message bus for agent-to-agent communication
 - A monitoring dashboard that watches agents from a privileged vantage point
 
-Coordination happens through the graph. Agent A satisfies an intent, `recomputeStatus` cascades, intents in Agent B's scope become red, B's event trigger fires. No messages were passed. The dependency structure is the coordination mechanism.
+Coordination happens through the graph. Agent A records an expression on an intent, intents in Agent B's scope that were blocked by it become workable, B's event trigger fires. No messages were passed. The dependency structure is the coordination mechanism.
 
 Oversight happens through the graph. An agent's work is sessions in the mutation log. An agent that gets stuck creates a gap with notes. The gap is visible to whoever defined the agent — through the same `queryIncomplete` they use for their own work. There is no separate monitoring channel because the graph IS the monitoring channel.
 
@@ -147,3 +147,55 @@ Humans run this loop. Agents run this loop. Clients run this loop (transduced th
 There is no special agent protocol, no human workflow, no client pipeline. The differences between actor types are: how they enter the graph (directly or transduced), what they can see (scope), and what they can write (trust). The loop itself is invariant.
 
 When you are building this system, resist creating separate code paths for different actor types. The operations are the same. The session model is the same. The mutation log is the same. Actor differences are captured by the session's `actor_type` and, for agents, the scope and trust constraints. The loop does not branch on who is running it.
+
+### The LLM constructs the intent
+
+When a human user asks for something — "what were yesterday's sales," "check if any invoices are overdue," "update the status on the Henderson project" — the LLM does the work and constructs the intent. Name, type, test condition, expression — all inferred from what the ask implied. The user never needs to formulate an intent, name it, write a test condition, or know that the graph exists.
+
+This is the LLM earning its cost. Translating a natural language ask into a structured intent with a verifiable test condition is exactly the judgment work that justifies an LLM call. The user provides the what. The LLM infers the structure.
+
+The intent enters the graph fully formed and already satisfied. The user got their answer. The graph got a new node. Neither had to wait for the other. Every expressed intent is worth keeping — it represents work the LLM did to understand what was asked, figure out how to do it, and produce a result the user accepted. That understanding is expensive to produce and cheap to store.
+
+Over time, the graph accumulates a complete record of everything the system has been asked to do and how it did it. Pattern detection can identify recurring intents and promote them to deterministic micro-apps that run without LLM involvement. Similarity search can offer prior solutions when new asks resemble old ones. None of this requires the user to have participated in the graph's construction — it happens because the LLM constructed the intents in the background all along.
+
+### Consistency is not a goal
+
+Intent naming, description style, and structural conventions do not need to be enforced across the graph. One intent named `get-yesterday-sales` and another named `fetch daily revenue summary` can coexist without reconciliation. The LLM reasons over intents by meaning, not by naming convention.
+
+Consistency is a human readability concern. Humans need clean taxonomies because they cannot hold a thousand intents in working memory. The LLM does not have that limitation — it can navigate a graph of heterogeneous naming and recognize semantic relationships without anyone reconciling the labels.
+
+If a human wants to inspect the graph, the LLM renders it in whatever organized form the human finds useful — grouped by domain, sorted by recency, filtered by status. The presentation is a view, not the structure. The structure serves the LLM. The views serve the human.
+
+This applies to semantic consistency — names, descriptions, labeling style. Structural consistency is different and is enforced. Intent types must come from the fixed vocabulary. Edge types must be one of the four defined types. Status values must be from the enum. The graph's operations — dependency traversal, completeness queries, projection building, status recomputation — depend on these structural categories being correct. The LLM can name an intent however it likes, but it must classify it correctly.
+
+When you are building this system, resist adding naming convention enforcement, style guides, or review steps that exist solely to make the graph look uniform. Optimize for what makes the LLM's reasoning effective — rich context in each intent, clear test conditions, good expressions — not for aesthetic consistency. The only way to guarantee consistency across all intents would be big design up front, which contradicts the system's core commitment to emergent structure.
+
+### Full kitting at the constraint
+
+The LLM is the constraint in the TOC sense — expensive per call, latent per operation, limited in throughput. Goldratt's full kitting principle applies: never let the constraint waste capacity gathering prerequisites. Everything the constraint needs should be assembled before it starts working.
+
+In LLM terms, full kitting is preparation that happens before the LLM reasons about the user's actual request — accessing external data, loading relevant schema, finding prior similar intents, understanding output format preferences, assembling domain context. The first time the LLM handles a category of request, it does this kitting work live, discovering what it needs as it goes. That discovery is itself expensive constraint time.
+
+Skill files are the kitting mechanism. A skill file encodes the preparation steps and domain knowledge for a category of work — what data sources to check, what schema to load, what conventions apply, what the user typically expects. When a skill file exists for the work at hand, the LLM arrives pre-kitted: context assembled, prerequisites loaded, ready to reason about the actual problem rather than spending capacity on preparation.
+
+The LLM should write its own skill files. When the LLM does preparation work — discovers what tables to consult, what context to assemble, what conventions apply — it encodes that preparation as a skill file immediately, not after detecting a pattern. If the preparation recurs, the skill file is already there. If it never recurs, the skill file sits quietly — cheap to store, same as intents. The LLM wrote the instructions for its own future self.
+
+Skill files are also how micro-apps are defined. A micro-app is not a separate abstraction — it is a set of skill files that together cover a complete operation from preparation through execution. As the LLM works, it writes skill files. Operations that accumulate complete skill file sets — covering data access, domain rules, output formatting, execution steps — are already micro-apps without anyone declaring them as such.
+
+The LLM maintains a skill directory — a table (`gdd.skills`) that indexes all available skill files with their purpose, coverage, and when to use them. A table rather than a file because it simplifies editing over time and querying — the LLM inserts rows and runs queries against it rather than parsing and rewriting a manifest. The directory is the first thing the LLM consults when a request arrives, before loading any specific skill files. When the LLM writes a new skill file, it registers it in the directory.
+
+The skill directory also serves as a registry of external agency — every capability the system can call on, whether it is a local skill file, an API endpoint, an Office tool via the xlsx/docx/pptx skills, or any tool reachable through an MCP connector. The directory tells the LLM what execution surfaces exist and how to reach them before it starts reasoning about the work.
+
+The full arc from user ask to autonomous operation is one mechanism: the LLM writes skill files as it works. Recurring operations accumulate complete skill file sets. Those sets are the micro-apps. Granting a trigger and authorization to a micro-app makes it an agent. Powering a UI with a micro-app makes it a traditional application. The difference between an agent and an app is only the interface — an agent has a programmatic trigger, an app has a human-facing UI. A traditional application is an agent designed to be manipulated by human users. Skill files are the unit at every stage.
+
+### Execution surfaces
+
+Any tool with an API or an MCP connector is both an execution surface and an interaction surface. An execution surface is a target the agent can produce output through — generating a spreadsheet via the xlsx skill, creating a Word document, pushing data to a dashboard. An interaction surface is a place where a human can reach the graph — querying intents, surfacing gaps, recording expressions from within their own tool.
+
+A human working in Excel who asks a question through the MCP connector is a natural language actor who happens to be inside a spreadsheet. The LLM constructs the intent, the graph grows, the answer returns to Excel. The human never leaves their tool. The graph does not care where the ask came from.
+
+This generalizes beyond Office. Any tool that can host an MCP connector or call an API becomes reachable. The skill directory lists them all. The skill file bundle is the same regardless of which surface it targets. The interface varies — chat, spreadsheet, web UI, scheduled trigger — but the mechanism is uniform.
+
+Each connector has its own skill file covering setup and usage — what to install in the external tool, how to configure the MCP connection to the GDD server, what capabilities become available, and what the user needs to do on their end. The LLM walks the user through setup using the connector's skill file. These connector skill files are registered in `gdd.skills` like any other skill, so the system knows what connections are available and how to establish new ones.
+
+The graph UI is where users compose both agents and applications from skill file bundles. Selecting a set of skills, assigning a trigger and authorization produces an agent. Selecting a set of skills and assigning a UI surface produces an application. The same composition mechanism serves both — the only difference is the interface. The connectors extend this composition to external tools: a user in Excel can interact with the graph directly, and the graph can push results back to Excel, without either side needing a separate integration layer.

@@ -4,25 +4,43 @@ Graph-Driven Development. The intent graph is the source of truth for this proje
 
 ## First run
 
-If the `gdd` database doesn't exist yet, start with `skills/foundations.md` — it describes the stances that shape the system's design. Then read `skills/intent-graph.md` and build what it describes. Follow its prerequisites section to set up PostgreSQL, then implement all layers.
+**Build in a separate directory.** This folder contains the skill files — the instructions. Do not write build output (source code, package.json, node_modules, etc.) here. Create a new sibling directory called `GDD` and build there. This folder should remain read-only reference material.
 
-After the system is built, ask the user: **"Would you like to participate in the GDD community feedback loop?"** If yes, see `skills/community.md` for setup. This is entirely optional — it enables posting build reports and gap nodes to the project's GitHub Discussions, which helps improve the skill files across different models and environments. It requires a GitHub personal access token with `write:discussion` scope.
+If the `gdd` database doesn't exist yet, start with `skills/foundations.md` — it describes the stances that shape the system's design. Then read `skills/intent-graph.md` and build what it describes. Follow its prerequisites section to set up PostgreSQL, then implement all layers in the `GDD` directory.
+
+After the system is built, ask the user: **"Do you have an API key for an LLM provider (Anthropic, OpenAI, Google)?"** If yes, add it via the `/api/settings/llm` endpoint or the `configure_provider` MCP tool. Multiple providers can be configured; one is set as active. The active provider powers natural language intake, human-to-graph translation, and agent activation. Without an active provider the system is fully functional for actors who work against the graph directly, but natural language surfaces return 501. LLM provider keys are stored in `gdd.llm_providers` and the server resolves the active provider dynamically per request — no restart needed.
+
+Then ask: **"Would you like to participate in the GDD community feedback loop?"** If yes, see `skills/community.md` for setup. This is entirely optional — it enables posting build reports and gap nodes to the project's GitHub Discussions, which helps improve the skill files across different models and environments. It requires a GitHub personal access token with `write:discussion` scope.
 
 ## Ongoing work
 
 Once the system exists, the graph is your entry point — not the skill files.
 
-### Actor tiers
+### Actors
 
-The distinction is not who the actor is — it's whether they need transduction.
+Every actor — human, agent, client, or external force — runs the same loop: find what's red, read the projection, work within a session, pull the andon cord if stuck, watch the graph turn green. The loop does not vary by actor type. See `skills/foundations.md` for the full account of why.
 
-**Tier 1 — Application users.** They interact through a built application. Their natural language is transduced via `clientSession` into intents (with tests) or gaps (with notes). They never see the graph directly.
+What varies between actors is two things: **how they enter the graph** and **what the session admits**.
 
-**Tier 2 — Direct users.** Power users with Claude Code or Cowork who work against the graph directly — creating intents, querying projections, recording expressions. No transduction needed. They speak graph.
+How they enter: some actors work against the graph directly — creating intents, querying projections, recording expressions. Others enter through natural language, with the LLM constructing the intent from the ask — inferring name, type, test condition, and expression — and satisfying it in the same session. The actor who asks naturally never sees the graph machinery. Every ask still produces a real intent that persists in the graph, accumulating operational memory over time. The LLM provider configuration determines whether natural language entry is available; without it, direct graph access works fully and natural language surfaces return 501.
 
-**Tier 3 — Agents.** Same as Tier 2, except autonomous. They run the intent session loop without a human directing each step, stopping only to create gap nodes when they hit a limit.
+What the session admits: agents are direct graph actors with defined scope (which intents they can see), trust level (what they can write), and trigger (when they activate). A human employing agents sets scope and trust — that is the mission assignment. The agent executes within it. Both are running the same loop; the difference is who initiates each iteration.
 
-Tier 2 and Tier 3 are architecturally identical. A power user employing agents is operating at Tier 3 — they set intent (scope, trust level), the agent executes. The human holds mission, the agent holds execution.
+### Skill directory
+
+The `gdd.skills` table is the registry of everything the system can do — local skill files, API endpoints, MCP connectors, Office tool capabilities. The LLM consults it before every request to know what capabilities exist and how to reach them. When the LLM writes a new skill file, it registers it here. See `skills/foundations.md` (Full kitting at the constraint) for why this matters.
+
+### Skill file authoring
+
+The LLM writes its own skill files. When it does preparation work for a request — discovers which tables to consult, what domain rules apply, what output format the user expects — it encodes that preparation as a skill file and registers it in `gdd.skills`. This happens on first encounter, not after detecting a pattern. If the preparation recurs, the skill file is already there. If it never recurs, it sits quietly. The LLM is writing instructions for its own future self.
+
+### Composing agents and applications
+
+A micro-app is a set of skill files that together cover a complete operation — preparation through execution. The graph UI allows users to compose these bundles. Assigning a trigger and authorization to a skill file bundle produces an agent. Assigning a UI surface produces an application. The difference is only the interface — an agent has a programmatic trigger, an app has a human-facing UI. A traditional application is an agent designed to be manipulated by human users.
+
+### Execution surfaces
+
+Any tool with an API or MCP connector is both an execution surface (the system targets it to produce output) and an interaction surface (a human reaches the graph through it). The system should expose an MCP server so external tools — Excel, Word, other MCP-capable applications — can connect to the graph. Each connector has its own skill file covering setup and configuration, registered in `gdd.skills`. See `skills/foundations.md` (Execution surfaces) for the full account.
 
 ### Defining agents
 
@@ -48,16 +66,21 @@ All work — human-directed, autonomous, or user-driven — happens in intent se
 3. Open an intent session (`createSession` with the target `intent_id`)
 4. Do the work — intent changes or expression changes
 5. Record expressions, close the session
-6. Commit and push — each intent session ends with a git commit and push
+6. If the session produced source artifacts (code, schema, configuration), commit and push
 
 `skills/intent-graph.md` — vocabulary, edge types, and operation specs.
 `skills/agents.md` — agent definitions: scope, trust levels, activation, the agents table.
+`skills/mcp-server.md` — MCP server: build instructions, tool definitions, connector setup.
+`skills/ui-client.md` — UI client: build the human surfaces as an external MCP client app.
 
 ## Stack
 
 - **Database**: PostgreSQL — `gdd` schema in `gdd` database
 - **Backend**: Node.js/Express (src/server.js)
 - **API**: REST endpoints on port 3000
+- **MCP**: Protocol endpoint at `/mcp` — see `skills/mcp-server.md`
+- **Admin surfaces**: Backend-served web dashboard for direct graph actors — dashboard (what's red), intent detail, gap surface, session log. Served as static files from `public/`, calls the REST API. See Layer 6 `ui-admin-surfaces`.
+- **User surfaces**: External MCP clients. Natural language intake and any user-facing application — Claude Desktop, Excel, Word, CLI — connect through the MCP server. The backend does not serve user-facing surfaces. See Layer 6 `ui-user-surfaces` and `skills/ui-client.md`.
 
 ## Conventions
 
@@ -65,3 +88,4 @@ All work — human-directed, autonomous, or user-driven — happens in intent se
 - Every mutation happens within a session
 - Never hardcode credentials
 - Test conditions are mandatory on intents — no test, no intent
+- Commit and push only when source files in the build workspace changed during the session. Graph-only mutations, configuration changes, and MCP client sessions do not produce commits.

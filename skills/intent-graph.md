@@ -62,11 +62,11 @@ After creating the schema and tables, insert the root intent — the axiomatic g
   "type": "compose",
   "name": "GDD system exists and is operational",
   "description": "The axiomatic ground of the intent graph. This intent exists before any session creates it. All bootstrap sessions reference it. The recursion of self-hosting bottoms out here.",
-  "children": ["foundation-tables"]
+  "children": ["foundation-tables", "projection-mechanism", "session-lifecycle", "dual-repr", "actor-integration", "human-surfaces", "mcp-server"]
 }
 ```
 
-Its test condition is structural: the schema exists, the API responds, the graph is queryable. It is inserted by the schema creation script, not produced by the session/mutation mechanism. All bootstrap sessions use `gdd-root` as their `intent_id`, which means the invariant — every session is organized around a specific intent — holds everywhere, including during the system's own construction.
+Its test condition is structural: all children are green — the schema exists, operations work, surfaces are built, the MCP server responds. It is inserted by the bootstrap script with `session_id = NULL`, not produced by the session/mutation mechanism. The bootstrap session uses `gdd-root` as its `intent_id`, which means the invariant — every session is organized around a specific intent — holds everywhere, including during the system's own construction.
 
 ## Build Conventions
 
@@ -79,9 +79,9 @@ All work happens in intent sessions — sessions organized around a specific int
 3. All graph mutations (new intents, edges, expressions) reference this session_id
 4. Record the expression on the intent you satisfied (artifacts = files created/modified)
 5. Close the session — this computes the diff of everything you changed
-6. Git commit and push — each intent session ends with a commit describing what was expressed
+6. If the session produced source artifacts (code, schema, configuration), git commit and push with a message describing what was expressed
 
-This applies during bootstrap (the system's first use case is tracking its own construction) and during all subsequent work. Every intent session becomes part of the graph's history.
+Commit and push only when source files in the build workspace changed during the session. Graph-only mutations, configuration changes, and MCP client sessions do not produce commits. Every intent session becomes part of the graph's history regardless of whether a commit is made.
 
 ### Project setup
 
@@ -90,6 +90,34 @@ Initialize a git repository and a Node.js project. The system is built in JavaSc
 ### Build the API server
 
 This system needs an Express server with REST endpoints, not just library functions. After implementing the core operations, create `src/server.js` with Express routes that expose the operations as API endpoints. The graph should be queryable and mutable over HTTP.
+
+### Build by dependency-stable layers
+
+Do not build by feature area. Build by dependency-stable layers and test each layer before exposing the next. The operations most at risk for subtle correctness bugs — `queryIncomplete`, dependency traversal, session diff, mutation capture, operation-to-MCP mapping — are the ones where plausible code can be structurally wrong. Layered build order with per-layer verification catches this.
+
+A sound sequence:
+
+1. **Schema only.** Create all tables, enums, constraints. Verify with manual inserts.
+2. **Core graph writes.** `createIntent`, `recordExpression`, `createGap`, `createEdge`. Verify DB state after each call.
+3. **Core graph reads.** `queryIncomplete`, `buildProjection`, `traverseDependencies`. Test against small hand-built graph fixtures.
+4. **Session and mutation tracing.** Prove each write operation generates the correct session/mutation records. Inspect diffs directly in SQL.
+5. **HTTP admin surface.** Expose stable endpoints for the above. No MCP yet.
+6. **Provider resolution.** Implement `gdd.llm_providers`. Prove both "no active provider" (501) and "active provider exists" paths.
+7. **clientSession.** The single orchestration path for natural language intake.
+8. **MCP wrapper.** `ask` calls `clientSession`. Verify no duplicated logic.
+9. **Agents.** Only after the rest is stable.
+
+### Canonical test fixture
+
+Create one small, stable fixture graph and reuse it across all test layers:
+
+- One intent node (red — no expression)
+- One intent node (green — has expression)
+- One `blocked-by` edge between them
+- One gap node
+- One session
+
+This gives a stable test object for `queryIncomplete`, mutation capture, projection behavior, and red/green derivation. Without it, the builder will re-solve the problem from scratch in each test file.
 
 ### Test isolation
 
@@ -149,16 +177,11 @@ Every intent node has these fields:
   "type": "string -- from the fixed vocabulary below",
   "name": "string -- human-readable short name",
   "description": "string -- what this intent means and why it matters",
-  "status": "potential | active | satisfied",
   "test": {
     "condition": "string -- REQUIRED for all intent types except gap and compose. The verifiable claim: what must be true for this intent to be satisfied. Gap nodes have no test condition (that's what makes them gaps -- the test is not yet articulable). Compose nodes have a structural test: all contains children are satisfied.",
     "verification": "string -- how to check (query, assertion, inspection)"
   },
   "throughput": "number -- optional. Expected revenue or value when this intent is satisfied. Used for throughput accounting: the graph can compute total throughput of satisfying an intent by summing its value plus the value of all downstream intents it unblocks. The constraint (agent scope with most queued red intents) combined with throughput tells you which work generates the most value per unit of constraint.",
-  "expression": {
-    "artifacts": ["array -- files, tables, endpoints produced when satisfied"],
-    "summary": "string -- what was done to satisfy this intent"
-  },
   "metadata": {
     "created_by": "string -- who authored this intent (human, agent, transduced)",
     "created_at": "timestamp",
@@ -167,22 +190,20 @@ Every intent node has these fields:
 }
 ```
 
-### Status values and the red/green model
+### The red/green model
 
 The graph is a test suite. Each intent is a test:
 
-- **Red**: Intent exists, expression does not (or test condition is not satisfied)
-- **Green**: Intent exists, expression exists, test passes
+- **Red**: Intent exists, no expression recorded
+- **Green**: Intent exists, expression recorded
 
 "What to do next" = "what's red." The same red-green cycle as TDD, lifted to the intent graph.
 
-Status values map to structural state:
+There is no status column on the node and no expression columns. Expressions live in `gdd.expressions`. Red/green is derived by checking for a row in `gdd.expressions` for the intent (`EXISTS (SELECT 1 FROM gdd.expressions WHERE intent_id = node.id)`). An intent with no expression row is red. An intent with an expression row is green. A `compose` intent is green when all its `contains` children are green.
 
-- **potential**: Upstream `blocked-by` dependencies are unsatisfied (structurally not ready -- like a second floor that needs the first floor built)
-- **active**: All `blocked-by` dependencies are satisfied. This intent is red -- it needs an expression.
-- **satisfied**: Test condition met, expression produced. This intent is green.
+Whether a red intent is workable right now is a structural question answered by traversing its `blocked-by` edges — if all dependencies are green, the intent is workable. This is a query result, not a stored state.
 
-Status transitions are derived, not manually set. An intent becomes **active** when all its `blocked-by` dependencies reach **satisfied**. An intent becomes **satisfied** when its test condition passes and an expression is recorded. A `compose` intent is automatically satisfied when all its `contains` children are satisfied — `recomputeStatus` should check this. There is no "suspended" -- intents that are no longer intended are removed from the graph. History lives in the mutations table.
+The test condition is verified by the actor before recording the expression. The discipline is at recording time — the actor checks that the test passes, then records the expression. The graph does not continuously re-evaluate tests. There is no "suspended" — intents that are no longer intended are removed from the graph. History lives in the mutations table.
 
 ## Intent Types
 
@@ -264,6 +285,17 @@ Edges connect intent nodes. Every edge has a `type` and a direction (from -> to)
 
 Note: there is no `supersedes` edge type. When an intent is replaced by a new design, the old intent is removed and the new one is created. The mutation log records both operations, preserving full history without cluttering the graph with dead nodes.
 
+### Populate-time shorthand
+
+The intent JSON blocks below use two shorthand fields that map to edges:
+
+- **`children`** on compose nodes → creates `contains` edges (compose node → each child)
+- **`blocked_by`** on intent nodes → creates `blocked-by` edges (intent → each target)
+
+These fields do not appear in the node structure or the `gdd.nodes` table. They are population instructions: when inserting a node that carries `children` or `blocked_by`, create the corresponding edges in `gdd.edges`.
+
+Similarly, the **`test`** object in the JSON maps to columns on `gdd.nodes`: `test.condition` → `test_condition`, `test.verification` → `test_verification`.
+
 ## Completeness
 
 The graph does not use tension scores, priority weights, or urgency signals. "What to do next" is determined by a single question: **what's incomplete?**
@@ -295,9 +327,25 @@ When populating a new intent graph for a project:
 5. **Use gap for genuine decisions.** If you don't know which approach to take, create a gap intent with the question and options. Don't guess -- surface the decision.
 6. **Don't over-decompose.** An intent should be large enough to be meaningful and small enough to have a clear test condition. "Build the whole system" is too large. "Add a column" is too small unless it's genuinely a separate concern.
 
+## Build Order
+
+The self-hosting claim requires a concrete bootstrap sequence. The system must exist before it can track its own construction, so the first few steps are privileged — they happen outside the session/mutation mechanism.
+
+1. **Create schema and tables.** Build the `gdd` schema and all Layer 0 tables (`gdd.nodes`, `gdd.edges`, `gdd.sessions`, `gdd.expressions`, `gdd.mutations`, `gdd.agents`, `gdd.skills`, `gdd.llm_providers`) plus enums. This is raw DDL — no sessions yet.
+
+2. **Insert root intent.** Insert the `gdd-root` node directly into `gdd.nodes` with `session_id = NULL`. This is the only node with a null `session_id` — it exists before the session mechanism does.
+
+3. **Open the bootstrap session.** Insert a session into `gdd.sessions` with `intent_id = 'gdd-root'` and `actor_type = 'human'`. This is the session under which all Layer 0–7 intents will be inserted.
+
+4. **Insert Layer 0–7 intents and edges.** The JSON blocks below are not documentation — they are the graph's starting state. Insert every node and edge from Layers 0–7 into `gdd.nodes` and `gdd.edges`, all referencing the bootstrap session. Compose nodes carry a `children` array — for each child, create a `contains` edge (compose node → child). Intent nodes may carry a `blocked_by` array — for each entry, create a `blocked-by` edge (intent → target).
+
+5. **Implement operations, record expressions.** Work through the layers. As each operation is implemented and its test passes, record an expression in `gdd.expressions` linking the intent to a session. The intent turns green. Layer 0 expressions (the tables created in step 1) may be recorded under the bootstrap session. Subsequent layers should open new sessions per intent — each references the intent being worked on.
+
+6. **Proceed layer by layer.** Layers are thematic groupings, not a strict build sequence. Dependency order is defined by `blocked-by` edges, not by layer number. A Layer 6 intent blocked by a Layer 7 intent means the Layer 7 work comes first — follow the edges, not the numbering.
+
 ## Initial Population: The Dual Graph System
 
-The following intents describe what the dual graph system needs. This is the project's own intent graph -- the system's first use of itself.
+The following intents describe what the dual graph system needs. This is the project's own intent graph — the system's first use of itself. **These JSON blocks are the graph's starting state.** Insert them as part of step 4 above.
 
 ### Layer 0: Foundation -- Schema and Core Types
 
@@ -308,16 +356,16 @@ The following intents describe what the dual graph system needs. This is the pro
     "type": "compose",
     "name": "Graph foundation tables",
     "description": "The database tables that store the global intent graph.",
-    "children": ["table-nodes", "table-edges", "table-sessions", "table-expressions", "table-mutations", "table-agents"]
+    "children": ["table-nodes", "table-edges", "table-sessions", "table-expressions", "table-mutations", "table-agents", "table-skills", "table-llm-providers"]
   },
   {
     "id": "table-nodes",
     "type": "define-table",
     "name": "Intent nodes table",
-    "description": "Stores all nodes in the global graph -- intents, compose nodes, and gap nodes. Each row has type, status, test condition, and metadata. test_condition is nullable: required for intent types (the verifiable claim), null for gap nodes (test not yet articulable), and structural for compose nodes ('all contains children are satisfied').",
+    "description": "Stores all nodes in the global graph -- intents, compose nodes, and gap nodes. Each row has type, test condition, throughput, and metadata. No status column, no expression columns -- expressions live in gdd.expressions. Red/green is derived by joining against gdd.expressions. test_condition is nullable: required for intent types (the verifiable claim), null for gap nodes (test not yet articulable), and structural for compose nodes ('all contains children have expressions').",
     "table_name": "gdd.nodes",
     "test": {
-      "condition": "Table exists with columns: id, type, name, description, status, test_condition (nullable), test_verification, throughput (numeric, nullable), expression_artifacts, expression_summary, created_by, created_at, session_id. Gap nodes have null test_condition. All other non-compose types require a non-null test_condition.",
+      "condition": "Table exists with columns: id, type, name, description, test_condition (nullable), test_verification, throughput (numeric, nullable), created_by, created_at, session_id. No status column. No expression columns -- expressions live in gdd.expressions. Red/green is derived by checking for a row in gdd.expressions for the intent. Gap nodes have null test_condition. All other non-compose types require a non-null test_condition.",
       "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='nodes'"
     }
   },
@@ -328,7 +376,7 @@ The following intents describe what the dual graph system needs. This is the pro
     "description": "Stores directed edges between intent nodes. Each edge has a type (blocked-by, contains, tensions-with, refines).",
     "table_name": "gdd.edges",
     "test": {
-      "condition": "Table exists with columns: id, from_node, to_node, edge_type, metadata",
+      "condition": "Table exists with columns: id, from_node, to_node, edge_type (typed as gdd.edge_type enum), metadata (JSONB, nullable)",
       "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='edges'"
     }
   },
@@ -339,7 +387,7 @@ The following intents describe what the dual graph system needs. This is the pro
     "description": "Stores intent sessions. Each session is organized around a specific intent and has an actor. The intent_id links the session to the intent being worked on.",
     "table_name": "gdd.sessions",
     "test": {
-      "condition": "Table exists with columns: id, intent_id, actor_type, actor_id, status, started_at, ended_at, parent_session_id. intent_id FK to gdd.nodes.",
+      "condition": "Table exists with columns: id, intent_id, actor_type, actor_id, status, started_at, ended_at, diff (JSONB, nullable -- populated on close), parent_session_id. intent_id FK to gdd.nodes.",
       "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='sessions'"
     }
   },
@@ -350,7 +398,7 @@ The following intents describe what the dual graph system needs. This is the pro
     "description": "Stores the concrete output of satisfied intents and completed sessions. An expression records what was produced, by which session, for which intent.",
     "table_name": "gdd.expressions",
     "test": {
-      "condition": "Table exists with columns: id, intent_id, session_id, artifacts, summary, created_at, diff",
+      "condition": "Table exists with columns: id, intent_id, session_id, artifacts, summary, created_at",
       "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='expressions'"
     }
   },
@@ -377,15 +425,25 @@ The following intents describe what the dual graph system needs. This is the pro
     }
   },
   {
-    "id": "type-intent-status",
-    "type": "define-type",
-    "name": "Intent status enum",
-    "description": "The three status values for intent nodes: potential (blocked), active (red -- needs expression), satisfied (green -- test passes).",
-    "type_name": "gdd.intent_status",
-    "values": ["potential", "active", "satisfied"],
+    "id": "table-skills",
+    "type": "define-table",
+    "name": "Skill directory table",
+    "description": "Indexes all skill files and external capabilities available to the system. Each row registers a skill with its purpose, file path (for local skill files), endpoint (for APIs and MCP connectors), and category of work it covers. The LLM consults this table before loading skill files -- it is the first step in full kitting. When the LLM writes a new skill file, it registers it here. The directory also lists external execution surfaces (Office tools, APIs, MCP connectors) so the LLM knows what capabilities exist before reasoning about a request.",
+    "table_name": "gdd.skills",
     "test": {
-      "condition": "Enum type exists in database",
-      "verification": "SELECT enumlabel FROM pg_enum WHERE enumtypid = 'gdd.intent_status'::regtype"
+      "condition": "Table exists with columns: id, name, description, file_path (nullable -- null for external capabilities), endpoint (nullable -- null for local files), category, created_by, created_at, session_id",
+      "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='skills'"
+    }
+  },
+  {
+    "id": "table-llm-providers",
+    "type": "define-table",
+    "name": "LLM providers table",
+    "description": "Stores LLM provider configurations. The system requires at least one active provider for natural language intake, intent construction from user asks, and agent activation. Multiple providers can be configured; one is marked active. The server resolves the active provider dynamically per request -- no restart needed. Without an active provider, natural language surfaces return 501 but direct graph access works fully.",
+    "table_name": "gdd.llm_providers",
+    "test": {
+      "condition": "Table exists with columns: id, name, provider (e.g. anthropic, openai, google), api_key, model, is_active (boolean), created_at. At least one provider must be active for natural language surfaces to function. A REST endpoint at /api/settings/llm supports CRUD operations. A configure_provider MCP tool exposes the same capability to external clients.",
+      "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='llm_providers'; curl /api/settings/llm returns provider list."
     }
   },
   {
@@ -461,13 +519,13 @@ These intents are all `blocked-by` the foundation tables.
     "id": "op-create-intent",
     "type": "implement-operation",
     "name": "Create intent node",
-    "description": "Insert a new node into the global graph. Validates type against the fixed vocabulary. For intent types: test_condition is required -- reject creation if missing or empty. For gap nodes: test_condition must be null, notes field is required. For compose nodes: test_condition is structural (all children satisfied). Accepts an optional blocked_by array of intent IDs. If provided, the node is inserted first, then blocked-by edges are created, then status is computed. Status is 'active' (red) if no blocked-by edges exist or all targets are satisfied, otherwise 'potential'.",
+    "description": "Insert a new node into the global graph. Validates type against the fixed vocabulary. For intent types: test_condition is required -- reject creation if missing or empty. For gap nodes: test_condition must be null, notes field is required. For compose nodes: test_condition is null in the database -- greenness is derived at query time by checking whether all contains children have expressions. Accepts an optional blocked_by array of intent IDs. If provided, the node is inserted first, then blocked-by edges are created. A new intent has no expression, so it is red by definition.",
     "operation_name": "createIntent",
-    "input": "Node fields (type, name, description, test, optional blocked_by[]). test.condition is REQUIRED for intent types, null for gaps, structural for compose.",
-    "output": "Created node with id and computed status",
+    "input": "Node fields (type, name, description, test, optional blocked_by[]). test.condition is REQUIRED for intent types, null for gaps, null for compose (derived structurally).",
+    "output": "Created node with id",
     "blocked_by": ["foundation-tables"],
     "test": {
-      "condition": "Can create nodes and retrieve them by id. Rejects intent-type creation if test_condition is null/empty. Accepts gap creation with null test_condition and required notes. Accepts compose creation with structural test. Status defaults to 'active' unless blocked-by edges exist (then 'potential').",
+      "condition": "Can create nodes and retrieve them by id. Rejects intent-type creation if test_condition is null/empty. Accepts gap creation with null test_condition and required notes. Accepts compose creation with structural test. New nodes have no expression (red).",
       "verification": "Integration test: create intent node, gap node, compose node. Verify rejection when intent type has no test_condition. Verify gap requires notes."
     }
   },
@@ -475,13 +533,13 @@ These intents are all `blocked-by` the foundation tables.
     "id": "op-create-edge",
     "type": "implement-operation",
     "name": "Create edge",
-    "description": "Insert a directed edge between two intent nodes. Validates both nodes exist. If edge is 'blocked-by', recomputes status of the source node.",
+    "description": "Insert a directed edge between two intent nodes. Validates both nodes exist.",
     "operation_name": "createEdge",
     "input": "from_node, to_node, edge_type",
-    "output": "Created edge, updated node statuses",
+    "output": "Created edge",
     "blocked_by": ["foundation-tables"],
     "test": {
-      "condition": "Can create edges. Adding a 'blocked-by' edge to an 'active' node changes it to 'potential'. Removing the edge (or satisfying the dependency) changes it back.",
+      "condition": "Can create edges. Adding a 'blocked-by' edge affects workability -- a red intent with an unsatisfied blocked-by dependency is not workable (queryIncomplete with workable filter excludes it).",
       "verification": "Integration test: create two nodes, add blocked-by edge, verify status transitions"
     }
   },
@@ -503,14 +561,14 @@ These intents are all `blocked-by` the foundation tables.
     "id": "op-record-expression",
     "type": "implement-operation",
     "name": "Record expression",
-    "description": "Record that an intent has been satisfied. Stores the artifacts produced and a summary. Updates intent status to 'satisfied'. Linked to the session that produced it. Captures the global graph diff.",
+    "description": "Record that an intent has been satisfied. Inserts a row in gdd.expressions with the artifacts produced, a summary, and links to the intent and session. The intent is now green -- it has an expression in the expressions table. Downstream intents that were blocked by this one may now be workable.",
     "operation_name": "recordExpression",
     "input": "intent_id, session_id, artifacts, summary",
-    "output": "Expression record, updated intent status",
+    "output": "Expression record",
     "blocked_by": ["op-create-intent", "op-create-session"],
     "test": {
-      "condition": "Recording an expression sets intent status to 'satisfied'. Downstream intents that were 'potential' become 'active' if all their blocked-by dependencies are now satisfied.",
-      "verification": "Integration test: create chain A blocks B blocks C. Satisfy A, verify B becomes active. Satisfy B, verify C becomes active."
+      "condition": "Recording an expression inserts a row in gdd.expressions linked to the intent and session. The intent is now green (has an expression row). Downstream intents blocked by this one become workable if all their other dependencies also have expressions.",
+      "verification": "Integration test: create chain A blocks B blocks C. Record expression on A, verify B is now workable (queryIncomplete with workable filter). Record expression on B, verify C is workable."
     }
   },
   {
@@ -532,15 +590,15 @@ These intents are all `blocked-by` the foundation tables.
     "id": "op-query-incomplete",
     "type": "implement-traversal",
     "name": "Query incomplete intents",
-    "description": "Return all intent nodes that are red: status is 'active' (dependencies satisfied but no expression yet). This is the primary entry point for 'what should I work on next?' Ordering: if any red intents have throughput values, order by total downstream throughput (the intent's own throughput plus the throughput of all intents it transitively unblocks). This answers 'which work generates the most value?' across competing projects. If no throughput values exist, fall back to ordering by downstream dependent count.",
+    "description": "Return all intent nodes that are red (no expression recorded). This is the primary entry point for 'what should I work on next?' Supports a 'workable' filter: when set, returns only red intents whose blocked-by dependencies are all green (have expressions). Compose nodes are green when all their contains children are green. Ordering: if any red intents have throughput values, order by total downstream throughput (the intent's own throughput plus the throughput of all intents it transitively unblocks). Null throughput is treated as zero. If no throughput values exist anywhere, fall back to ordering by downstream dependent count.",
     "traversal_name": "queryIncomplete",
     "start": "Global graph",
-    "pattern": "Filter by status='active' (red intents), order by total downstream throughput desc (with downstream dependent count as fallback)",
+    "pattern": "Filter for nodes with no expression (red). Optional workable filter checks blocked-by edges. Order by total downstream throughput desc (with downstream dependent count as fallback)",
     "returns": "Array of red intent nodes with their downstream dependent counts and total downstream throughput",
     "blocked_by": ["op-create-intent", "op-create-edge"],
     "test": {
-      "condition": "Returns only active (red) intents. Does not return potential (blocked) or satisfied (green) intents. When throughput values exist: intent A (throughput 100, unblocks B with throughput 200) ranks above intent C (throughput 250, unblocks nothing) because A's total is 300. When no throughput values exist: intents blocking more downstream work appear first.",
-      "verification": "Integration test: create mix of potential/active/satisfied intents, verify only active returned. Create chain where A (throughput 10) blocks B (throughput 50) and C (throughput 30), verify A's total downstream throughput is 90 and it ranks accordingly."
+      "condition": "Returns only red intents (no expression). Does not return green intents (have expression). With workable filter: intent A (red, all deps green) is returned, intent B (red, has a red dep) is not. Without workable filter: both A and B are returned. Compose node with all children green is itself green and not returned. When throughput values exist: intent A (throughput 100, unblocks B with throughput 200) ranks above intent C (throughput 250, unblocks nothing) because A's total is 300.",
+      "verification": "Integration test: create intents with and without expressions, with and without satisfied dependencies. Verify filtered and unfiltered queries. Test compose node green derivation."
     }
   },
   {
@@ -558,17 +616,32 @@ These intents are all `blocked-by` the foundation tables.
     }
   },
   {
-    "id": "op-recompute-status",
-    "type": "implement-operation",
-    "name": "Recompute intent status",
-    "description": "Derive the correct status for an intent based on structural state. An intent is 'potential' if any blocked-by dependency is unsatisfied, 'active' if all dependencies are satisfied but no expression exists, 'satisfied' if test passes and expression is recorded. A compose node is automatically 'satisfied' when all its contains children are satisfied. Called after any operation that changes graph structure: recordExpression, createEdge, removeIntent.",
-    "operation_name": "recomputeStatus",
-    "input": "intent_id",
-    "output": "Updated status for the intent and any downstream intents whose status changed as a result",
-    "blocked_by": ["op-create-intent", "op-create-edge"],
+    "id": "op-query-skills",
+    "type": "implement-traversal",
+    "name": "Query skill directory",
+    "description": "Return skill entries from gdd.skills. Supports filtering by category. This is the full kitting entry point -- the LLM consults it before every request to know what capabilities exist and how to reach them.",
+    "traversal_name": "querySkills",
+    "start": "gdd.skills table",
+    "pattern": "Filter by category (optional), return all matching skill entries",
+    "returns": "Array of skill entries with name, description, file_path, endpoint, category",
+    "blocked_by": ["table-skills"],
     "test": {
-      "condition": "After satisfying all blocked-by deps of intent X, recomputeStatus changes X from 'potential' to 'active'. After recording an expression for X, recomputeStatus changes X to 'satisfied' and cascades to downstream intents. A compose node with all children satisfied is automatically set to 'satisfied'.",
-      "verification": "Integration test: create chain with compose node, satisfy children one by one, verify compose auto-satisfies when last child is green."
+      "condition": "Returns all skills when no filter is given. Returns only matching skills when filtered by category. Returns empty array when no skills match.",
+      "verification": "Insert test skills with different categories, verify filtered and unfiltered queries return correct results."
+    }
+  },
+  {
+    "id": "op-create-gap",
+    "type": "implement-operation",
+    "name": "Create gap node",
+    "description": "Convenience operation for creating a gap node. Equivalent to createIntent with type='gap', but named explicitly because pulling the andon cord is a first-class action. Requires notes -- the gap must record everything the actor does know. Returns the created gap node.",
+    "operation_name": "createGap",
+    "input": "name, notes (REQUIRED), optional blocked_by[]",
+    "output": "Created gap node with id",
+    "blocked_by": ["op-create-intent"],
+    "test": {
+      "condition": "Creates a gap node with null test_condition and required notes. Rejects creation if notes are empty. The gap appears in queryIncomplete results.",
+      "verification": "Create a gap with notes, verify it exists with type='gap' and null test_condition. Attempt creation without notes, verify rejection."
     }
   }
 ]
@@ -643,17 +716,17 @@ These intents are blocked by Layer 1 operations.
     "id": "session-lifecycle",
     "type": "compose",
     "name": "Session lifecycle",
-    "description": "Sessions are created, accumulate mutations, and close. On close, their expression (the set of global graph changes) is recorded. The session graph persists as history.",
+    "description": "Sessions are created, accumulate mutations, and close. On close, the diff (the set of global graph changes) is computed. A session is not an intent -- it is the context in which work happens. Intent expressions may be recorded as part of a session's diff, but the diff itself is not an expression.",
     "children": ["op-close-session", "op-session-diff", "op-session-history"]
   },
   {
     "id": "op-close-session",
     "type": "implement-operation",
     "name": "Close session",
-    "description": "End a session. Computes the global graph diff (all mutations made during this session). Records the diff as the session's expression. Session status becomes 'closed'. The session graph is retained as history.",
+    "description": "End a session. Computes the diff -- all mutations made during this session (nodes created, modified, edges added, expressions recorded). Session status becomes 'closed'. The session and its diff are retained as history.",
     "operation_name": "closeSession",
     "input": "session_id",
-    "output": "Session with expression (diff, artifacts, summary)",
+    "output": "Session with diff (mutations, summary)",
     "blocked_by": ["op-create-session", "op-record-expression"],
     "test": {
       "condition": "Closing a session that created 2 intents and satisfied 1 produces a diff showing those 3 mutations. Session status is 'closed'. Session remains queryable.",
@@ -678,11 +751,11 @@ These intents are blocked by Layer 1 operations.
     "id": "op-session-history",
     "type": "implement-traversal",
     "name": "Query session history",
-    "description": "Query the log of sessions. Filter by actor, time range, intents touched. Each result includes the session's purpose, mutations, and expression. This is the queryable graph-of-graphs.",
+    "description": "Query the log of sessions. Filter by actor, time range, intents touched. Each result includes the session's purpose, mutations, and diff. This is the queryable graph-of-graphs.",
     "traversal_name": "queryHistory",
     "start": "Session log",
     "pattern": "Filter by actor/time/intent, ordered by time",
-    "returns": "Array of sessions with their diffs and expressions",
+    "returns": "Array of sessions with their diffs",
     "blocked_by": ["op-close-session"],
     "test": {
       "condition": "Can query 'all sessions by agent X that touched intent Y'. Returns sessions with full context.",
@@ -707,13 +780,13 @@ These intents are blocked by Layer 1 operations.
     "id": "op-render-human",
     "type": "translate",
     "name": "Render human-legible view",
-    "description": "Given a projection (a subgraph), produce a human-readable summary: what the intents are about, what's green (done), what's red (needs work), what's blocked (potential), key decisions made. Narrative form, not graph structure.",
+    "description": "Given a projection (a subgraph), produce a human-readable summary: what the intents are about, what's green (has expression), what's red (no expression), what's blocked (red with unsatisfied dependencies), key decisions made. Narrative form, not graph structure.",
     "from_repr": "Projection (graph structure)",
     "to_repr": "Human-readable summary (markdown or structured text)",
-    "mechanism": "Deterministic rendering. The projection already contains structured data -- group intents by status (green/red/blocked), format as markdown. No LLM needed for the base rendering. An LLM layer can be added on top for narrative polish, but the base is a deterministic formatter.",
+    "mechanism": "Deterministic rendering. The projection already contains structured data -- group intents by red/green/blocked (derived from expression presence and edge traversal), format as markdown. No LLM needed for the base rendering. An LLM layer can be added on top for narrative polish, but the base is a deterministic formatter.",
     "blocked_by": ["projection-mechanism"],
     "test": {
-      "condition": "A projection with 5 intents (2 satisfied, 2 active, 1 potential) produces a summary that a non-technical reader can understand: what's done, what's in progress, what's next, what's blocked.",
+      "condition": "A projection with 5 intents (2 green, 2 red and workable, 1 red and blocked) produces a summary that a non-technical reader can understand: what's done, what needs work, what's blocked.",
       "verification": "Generate summary from known projection, human review for clarity"
     }
   },
@@ -733,7 +806,7 @@ These intents are blocked by Layer 1 operations.
   },
   {
     "id": "op-translate-repr",
-    "type": "implement-operation",
+    "type": "translate",
     "name": "Translate between representations",
     "description": "Bidirectional translation between representations. The two directions have fundamentally different implementations: **human-to-graph** (natural language to intent nodes/edges) is an LLM operation -- accepts an `llm` function parameter, operates against a projection (not the full graph), and produces candidate mutations that are validated for referential integrity before committing. Transduction failures become gaps preserving the original input. Do NOT attempt regex or keyword parsing. **graph-to-human** (mutations to change descriptions) is deterministic -- the input is already structured, so a switch over mutation types produces readable text. No LLM needed.",
     "operation_name": "translateRepresentation",
@@ -756,16 +829,16 @@ These intents are blocked by Layer 1 operations.
     "id": "actor-integration",
     "type": "compose",
     "name": "Actor integration",
-    "description": "All actor types — application users, external forces, and autonomous agents — enter the graph through sessions. Tier 1 actors (application users) are transduced via clientSession. External forces are transduced via transduceExternal. Tier 2/3 actors (direct users, agents) work against the graph directly. Agents are first-class graph entities with scope, trust level, and auditable sessions.",
+    "description": "All actor types — application users, external forces, and autonomous agents — enter the graph through sessions. Actors who interact through natural language are transduced via clientSession or transduceExternal. Actors who work against the graph directly (power users, agents) operate without transduction. Agents are first-class graph entities with scope, trust level, and auditable sessions.",
     "children": ["op-transduce-external", "op-client-session", "op-define-agent", "op-activate-agent", "op-query-agents"]
   },
   {
     "id": "op-transduce-external",
     "type": "implement-operation",
     "name": "Transduce external force",
-    "description": "Given an external event (regulatory change, system failure, market signal), create a transduction session that interprets the event into graph mutations via LLM call. The LLM operates against a projection (not the full graph) and produces candidate mutations. A deterministic validator checks referential integrity before committing -- unknown IDs are rejected, ambiguous references become gaps preserving the original input. If the event's impact cannot be articulated as testable intents, create gap nodes. The session records the interpretation so it can be audited or revised.",
+    "description": "Given an external event (regulatory change, system failure, market signal), create a transduction session that interprets the event into graph mutations via LLM call. The LLM operates against a projection (not the full graph) and produces candidate mutations. A deterministic validator checks referential integrity before committing -- unknown IDs are rejected, ambiguous references become gaps preserving the original input. If the event's impact cannot be articulated as testable intents, create gap nodes. The session records the interpretation so it can be audited or revised. Auto-generated intent IDs use the format transduction-{timestamp}.",
     "operation_name": "transduceExternal",
-    "input": "External event description, interpreter (human or agent id)",
+    "input": "External event description, interpreter (human or agent id). Accepts an optional id_prefix parameter for test isolation (overrides the default transduction-{timestamp} format).",
     "output": "Session with mutations representing the event's impact on the graph",
     "blocked_by": ["session-lifecycle"],
     "test": {
@@ -782,6 +855,7 @@ These intents are blocked by Layer 1 operations.
     "input": "Client conversation content, client id",
     "output": "Session with client mutations (intents with tests, or gaps)",
     "blocked_by": ["session-lifecycle", "op-translate-repr"],
+    "note": "The MCP tool ask is a transport wrapper over clientSession. ask calls clientSession and handles session open/close automatically. It is not a separate orchestration function — a builder implementing ask should call clientSession, not reimplement its logic.",
     "test": {
       "condition": "A client saying 'users need to log in with email' creates an intent node with a test condition. A client saying 'it needs to be faster' creates a gap node (no testable condition). The session records the full conversation for audit.",
       "verification": "Integration test: simulate client input with clear and vague requirements, verify intent vs gap routing"
@@ -791,9 +865,9 @@ These intents are blocked by Layer 1 operations.
     "id": "op-define-agent",
     "type": "implement-operation",
     "name": "Define agent",
-    "description": "Create an agent definition as a first-class graph entity. An agent has a scope (which intents it operates on -- a projection, subgraph, or tag), a trust level (what it can write back), a trigger (when to activate -- manual, event, schedule, or continuous), and an llm function for operations requiring LLM calls. Defining an agent is the mission assignment -- the human sets scope, trust, and trigger; the agent executes within that scope autonomously. See skills/agents.md for full specification.",
+    "description": "Create an agent definition as a first-class graph entity. An agent has a scope (which intents it operates on -- a projection, subgraph, or tag), a trust level (what it can write back), and a trigger (when to activate -- manual, event, schedule, or continuous). Defining an agent is the mission assignment -- the human sets scope, trust, and trigger; the agent executes within that scope autonomously. Agents do not store an LLM function or provider reference -- they use the globally configured active provider, resolved at runtime from gdd.llm_providers. See skills/agents.md for full specification.",
     "operation_name": "defineAgent",
-    "input": "agent_id, scope (projection spec or intent_ids), trust_level (full | express-only | gaps-only), trigger (manual | event | schedule | continuous, defaults to manual), llm function",
+    "input": "agent_id, scope (projection spec or intent_ids), trust_level (full | express-only | gaps-only), trigger (manual | event | schedule | continuous, defaults to manual)",
     "output": "Agent node stored in the graph with scope and trust metadata",
     "blocked_by": ["session-lifecycle", "projection-mechanism"],
     "test": {
@@ -836,14 +910,30 @@ These intents are blocked by Layer 1 operations.
 
 The system serves multiple actor types, but humans need surfaces — places where the graph becomes legible and actionable without requiring direct graph operations. These intents describe what humans need to see and do, not how it looks. The building LLM chooses the implementation: web UI, CLI, terminal dashboard, or any other form that satisfies the behavioral test conditions.
 
+**Two surface families with different delivery mechanisms.** Admin surfaces (dashboard, intent detail, gap surface, session log) are served by the backend directly — they are part of the same Express application, served as static files from `public/`, and call the REST API. They are for direct graph actors: power users, operators, and administrators who work against the graph intentionally. User-facing surfaces (client intake) are external MCP clients — they connect through the MCP server (Layer 7), enabling actors who work inside external tools (Claude Desktop, Excel, Word, Slack) to reach the graph without leaving their environment. The backend does not serve user-facing surfaces.
+
 ```json
 [
   {
     "id": "human-surfaces",
     "type": "compose",
     "name": "Human-facing surfaces",
-    "description": "The surfaces through which human actors perceive and act on the graph. Each surface consumes projections and renderings from earlier layers. The system is fully functional without these — Tier 2 users can operate through direct graph calls — but Tier 1 users and most Tier 2 users need these to work effectively.",
-    "children": ["ui-dashboard", "ui-intent-detail", "ui-gap-surface", "ui-session-log", "ui-client-intake"]
+    "description": "The surfaces through which human actors perceive and act on the graph. Split into two families: admin surfaces (backend-served, for direct graph actors) and user-facing surfaces (external MCP clients, for natural language actors). The system is fully functional without these — direct graph calls work independently — but human actors need these to work effectively.",
+    "children": ["ui-admin-surfaces", "ui-user-surfaces"]
+  },
+  {
+    "id": "ui-admin-surfaces",
+    "type": "compose",
+    "name": "Admin surfaces",
+    "description": "Backend-served surfaces for direct graph actors: power users, operators, administrators. Served as static files from public/ by the Express server. Call the REST API directly. Not exposed through MCP.",
+    "children": ["ui-dashboard", "ui-intent-detail", "ui-gap-surface", "ui-session-log"]
+  },
+  {
+    "id": "ui-user-surfaces",
+    "type": "compose",
+    "name": "User-facing surfaces",
+    "description": "External MCP clients for actors who do not speak graph directly. Connect through the MCP server (Layer 7). Any MCP-capable tool — Claude Desktop, Excel, Word, Slack, custom apps — can serve as a user-facing surface.",
+    "children": ["ui-client-intake"]
   },
   {
     "id": "ui-dashboard",
@@ -856,7 +946,7 @@ The system serves multiple actor types, but humans need surfaces — places wher
     "blocked_by": ["op-query-incomplete", "op-render-human", "op-query-agents"],
     "test": {
       "condition": "A human looking at the dashboard can answer: what needs work next, how many gaps need decisions, which agents are active, and what changed recently. Red intents appear ordered by downstream dependent count (or throughput). Satisfied intents do not appear unless explicitly requested.",
-      "verification": "Create a graph with mix of red/green/potential intents, gaps, and agent sessions. Verify the dashboard surfaces the right information in the right order."
+      "verification": "Create a graph with mix of red/green intents (some blocked, some workable), gaps, and agent sessions. Verify the dashboard surfaces the right information in the right order."
     }
   },
   {
@@ -905,14 +995,67 @@ The system serves multiple actor types, but humans need surfaces — places wher
     "id": "ui-client-intake",
     "type": "implement-operation",
     "name": "Client intake surface",
-    "description": "The Tier 1 actor interface. Application users who do not speak graph interact through this surface. Their natural language input enters through clientSession (which handles transduction via LLM), and this surface shows what was created — intents with test conditions, or gaps where the input could not be articulated as testable claims. The surface should make the transduction visible: what the user said, what the system understood, what was created in the graph.",
+    "description": "The natural language entry surface. Actors who do not speak graph interact through this surface. Their input enters through clientSession (which handles transduction via LLM) — ask in the MCP layer is a transport wrapper over clientSession that handles the surrounding session lifecycle automatically; it is not a separate orchestration function. This surface shows what was created: intents with test conditions, or gaps where the input could not be articulated as testable claims. The transduction should be visible: what the user said, what the system understood, what was created in the graph.",
     "operation_name": "clientIntake",
     "input": "Client conversation content",
     "output": "Rendered view of the transduction: original input, created intents (with test conditions) and gaps (with notes), confirmation interface",
-    "blocked_by": ["op-client-session", "op-render-human"],
+    "blocked_by": ["op-client-session", "op-render-human", "mcp-tools"],
     "test": {
-      "condition": "A Tier 1 user can state a requirement in natural language and see what the system created from it: intents (with test conditions they can verify) or gaps (with notes showing what was unclear). The user can confirm or revise before the graph commits. The transduction is transparent, not a black box.",
-      "verification": "Simulate client input with clear requirements and vague requirements. Verify the surface shows created intents vs gaps with full transduction context."
+      "condition": "A user can state a requirement in natural language through an external MCP client and see what the system created from it: intents (with test conditions) or gaps (with notes showing what was unclear). Graph operations are immediate -- the intent is created when the LLM constructs it. If the user wants to change what was created, they say so and the LLM modifies or removes the intent. The mutation log preserves full history.",
+      "verification": "Simulate client input with clear requirements and vague requirements. Verify the surface shows created intents vs gaps with full context."
+    }
+  }
+]
+```
+
+### Layer 7: MCP Server -- Execution Surfaces
+
+The MCP server makes the graph reachable from external tools. It runs inside the existing Express app and exposes graph operations as MCP tools. See `skills/mcp-server.md` for full build instructions.
+
+```json
+[
+  {
+    "id": "mcp-server",
+    "type": "compose",
+    "name": "MCP server for execution surfaces",
+    "description": "Exposes graph operations over the Model Context Protocol so external tools (Excel, Word, PowerPoint, Claude Desktop, any MCP-capable application) can connect to the graph. Most MCP tools map directly to existing graph operations. Some (like ask and configure_provider) compose multiple operations or expose infrastructure configuration. See skills/mcp-server.md for implementation details.",
+    "children": ["mcp-endpoint", "mcp-tools", "mcp-connectors"]
+  },
+  {
+    "id": "mcp-endpoint",
+    "type": "implement-endpoint",
+    "name": "MCP protocol endpoint",
+    "description": "A single Express endpoint that serves the MCP protocol using @modelcontextprotocol/sdk. Handles protocol negotiation and Streamable HTTP transport. The builder consults the installed SDK version for the exact wiring pattern.",
+    "method": "ALL",
+    "path": "/mcp",
+    "blocked_by": ["foundation-tables"],
+    "test": {
+      "condition": "The /mcp endpoint responds to MCP protocol handshake and returns the server's tool list when queried.",
+      "verification": "Send an MCP initialize request to /mcp and verify it returns server capabilities and registered tools."
+    }
+  },
+  {
+    "id": "mcp-tools",
+    "type": "implement-operation",
+    "name": "MCP tool definitions",
+    "description": "Register graph operations as MCP tools: ask (natural language entry), query_incomplete, query_skills, build_projection, create_intent, record_expression, create_gap, query_agents, configure_provider. Each tool maps to an existing graph operation or infrastructure endpoint -- no new logic, just protocol translation. See skills/mcp-server.md for tool specifications.",
+    "operation_name": "registerMcpTools",
+    "blocked_by": ["mcp-endpoint", "op-query-incomplete", "op-build-projection", "op-create-intent", "op-record-expression", "op-client-session", "op-query-agents", "table-llm-providers"],
+    "test": {
+      "condition": "All nine MCP tools are registered and callable. The ask tool creates an intent and returns a result. The query_incomplete tool returns red intents. The configure_provider tool can list and set active providers. Each tool produces the same result as calling the equivalent REST endpoint.",
+      "verification": "Call each MCP tool through an MCP client and verify results match the equivalent REST API calls."
+    }
+  },
+  {
+    "id": "mcp-connectors",
+    "type": "implement-operation",
+    "name": "Connector skill file generation",
+    "description": "When a user connects an external tool to the GDD MCP server, the LLM writes a connector skill file capturing setup steps and tool-specific details, and registers it in gdd.skills. The skill file covers what was configured, what capabilities are available through that connector, and any limitations discovered during setup.",
+    "operation_name": "registerConnector",
+    "blocked_by": ["mcp-endpoint", "table-skills"],
+    "test": {
+      "condition": "After connecting an external tool, a skill file exists describing the connector setup and a row exists in gdd.skills with the connector's category and endpoint.",
+      "verification": "Connect a test MCP client, verify a skill file was created and gdd.skills has a matching entry."
     }
   }
 ]
@@ -931,13 +1074,15 @@ These were originally gaps, now resolved:
 These edges connect the intents above:
 
 ```
-table-nodes, table-edges, table-sessions, table-expressions, table-mutations, table-agents  ->  (contained by)  ->  foundation-tables
+foundation-tables, projection-mechanism, session-lifecycle, dual-repr, actor-integration, human-surfaces, mcp-server  ->  (contained by)  ->  gdd-root
+table-nodes, table-edges, table-sessions, table-expressions, table-mutations, table-agents, table-skills, table-llm-providers  ->  (contained by)  ->  foundation-tables
 op-create-intent, op-create-edge, op-create-session           ->  (blocked-by)    ->  foundation-tables
 op-record-expression                                          ->  (blocked-by)    ->  op-create-intent, op-create-session
 op-traverse-dependencies                                      ->  (blocked-by)    ->  op-create-intent, op-create-edge
 op-query-incomplete                                           ->  (blocked-by)    ->  op-create-intent, op-create-edge
 op-remove-intent                                              ->  (blocked-by)    ->  op-create-intent, op-create-edge
-op-recompute-status                                           ->  (blocked-by)    ->  op-create-intent, op-create-edge
+op-query-skills                                                ->  (blocked-by)    ->  table-skills
+op-create-gap                                                  ->  (blocked-by)    ->  op-create-intent
 op-build-projection                                           ->  (blocked-by)    ->  op-traverse-dependencies
 op-session-projection                                         ->  (blocked-by)    ->  op-build-projection, op-create-session
 op-intersect-graphs                                           ->  (blocked-by)    ->  op-session-projection
@@ -951,12 +1096,18 @@ op-client-session                                             ->  (blocked-by)  
 op-define-agent                                               ->  (blocked-by)    ->  session-lifecycle, projection-mechanism
 op-activate-agent                                             ->  (blocked-by)    ->  op-define-agent
 op-query-agents                                               ->  (blocked-by)    ->  op-define-agent
-ui-dashboard, ui-intent-detail, ui-gap-surface, ui-session-log, ui-client-intake  ->  (contained by)  ->  human-surfaces
+ui-admin-surfaces, ui-user-surfaces                           ->  (contained by)  ->  human-surfaces
+ui-dashboard, ui-intent-detail, ui-gap-surface, ui-session-log  ->  (contained by)  ->  ui-admin-surfaces
+ui-client-intake                                              ->  (contained by)  ->  ui-user-surfaces
 ui-dashboard                                                  ->  (blocked-by)    ->  op-query-incomplete, op-render-human, op-query-agents
 ui-intent-detail                                              ->  (blocked-by)    ->  op-build-projection, op-render-human
 ui-gap-surface                                                ->  (blocked-by)    ->  op-render-human, op-session-history
 ui-session-log                                                ->  (blocked-by)    ->  op-session-history, op-render-human
-ui-client-intake                                              ->  (blocked-by)    ->  op-client-session, op-render-human
+ui-client-intake                                              ->  (blocked-by)    ->  op-client-session, op-render-human, mcp-tools
+mcp-endpoint, mcp-tools, mcp-connectors                       ->  (contained by)  ->  mcp-server
+mcp-endpoint                                                   ->  (blocked-by)    ->  foundation-tables
+mcp-tools                                                      ->  (blocked-by)    ->  mcp-endpoint, op-query-incomplete, op-build-projection, op-create-intent, op-record-expression, op-client-session, op-query-agents, table-llm-providers
+mcp-connectors                                                 ->  (blocked-by)    ->  mcp-endpoint, table-skills
 ```
 
 ## Working With This Graph
@@ -967,7 +1118,7 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 
 2. **Read the projection.** Before working on an intent, build its projection. This gives you the full context: what it depends on, what it enables, what its test condition requires. For an LLM actor, `renderLLM` produces the dense structured form that makes this context directly navigable.
 
-3. **Work within an intent session.** Every mutation to the global graph happens within an intent session — a session tied to the specific intent you're working on. Open a session with the intent_id and your actor type, do the work, record the expression, close the session, commit and push.
+3. **Work within an intent session.** Every mutation to the global graph happens within an intent session — a session tied to the specific intent you're working on. Open a session with the intent_id and your actor type, do the work, record the expression, close the session. If the session produced source artifacts, commit and push.
 
 4. **Pull the andon cord.** If you encounter a decision you can't make, or you can't articulate a test condition, create a gap node rather than guessing. Record everything you do know in the gap's `notes` — the gap is not admission of ignorance, it is the boundary between what is articulable and what is not, with the articulable part preserved. Gaps surface to humans through the human-legible representation.
 
@@ -979,4 +1130,6 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 - `agents.md` -- Agent definitions: scope, trust levels, activation, the agents table
 - `graph-completeness.md` -- The completeness model: red/green, mandatory tests, andon cord, no tension scores
 - `graph-merge.md` -- Cross-graph collaboration: merge projections, negotiation sessions, organizational patterns
+- `mcp-server.md` -- MCP server: build instructions, tool definitions, connector setup for Excel/Word/PowerPoint
+- `ui-client.md` -- UI client: build instructions for the human-facing surfaces as an external MCP client app
 - `community.md` -- Optional. Post build reports and gaps to GitHub Discussions for multi-model feedback

@@ -50,7 +50,7 @@ A projection of intents over agents produces something like a schedule without a
 
 ## Long-term projects
 
-The dependency chain is the timeline. A 2-year project doesn't need Gantt charts or calendar dates — `blocked-by` edges create natural temporal ordering. `potential` status already means "structurally not ready, waiting on upstream work."
+The dependency chain is the timeline. A 2-year project doesn't need Gantt charts or calendar dates — `blocked-by` edges create natural temporal ordering. A red intent with unsatisfied dependencies is structurally not ready — workability is derived from the edges, not stored as a status.
 
 The key is granularity over time. Near-term work has clear test conditions — those are intents. Far-term work is hazier — those are gaps with notes. As time passes and gaps get resolved, they become intents with tests. The graph evolves from coarse to detailed, from the outside in.
 
@@ -62,7 +62,7 @@ A 2-year project at population time might look like:
 
 All exist in the present. All are real graph state. The gaps aren't vague plans — they're honest statements of "we know this much and not more." As Phase 1 turns green:
 
-- Phase 2 intents that were `potential` become `active` (red)
+- Phase 2 intents that were blocked become workable (their dependencies now have expressions)
 - Phase 2 gaps get resolved into intents as knowledge accumulates
 - Phase 3 comes into focus — its gaps are revisited, some become intents
 - Agent scopes shift to cover newly active phases
@@ -167,7 +167,7 @@ Start an agent running.
    - A gap is created (agent hit something it can't resolve)
    - Manual stop
 7. Close the session, set agent.status to 'paused' or 'defined'
-8. Commit and push
+8. If the session produced source artifacts, commit and push
 
 ### `queryAgents`
 

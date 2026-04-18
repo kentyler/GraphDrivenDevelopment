@@ -1,5 +1,7 @@
 # Graph Completeness Model
 
+**This is the decision log that produced the current spec.** The decisions below have been applied to `intent-graph.md`. Operation names referenced in the "Impact on Existing Code" section (e.g., `computeTension`, `queryActive`, `recomputeStatus`, `applyCommit`) refer to an earlier design and no longer exist in the current spec. This document is retained as the reasoning record — the authoritative spec is `intent-graph.md`.
+
 Resolves `gap-tension-derivation`. Emerged from discussion on 2026-04-15.
 
 ## Core Principle: The House Metaphor
@@ -66,13 +68,9 @@ Removing an intent must cascade. If intent A is removed and intent B depended on
 
 Cascade semantics need to be defined in implementation.
 
-### 7. Status simplification
+### 7. Status removed
 
-The `potential` -> `active` -> `satisfied` lifecycle treats the graph like a task tracker. Under the house model:
-
-- An intent is **in the graph** (expressed, real) or **not in the graph**
-- `blocked-by` becomes a structural constraint (second floor needs first floor), not a scheduling dependency
-- The status enum may collapse or change meaning significantly
+**Resolved.** The `potential` -> `active` -> `satisfied` lifecycle treated the graph like a task tracker. Under the house model, an intent is red (no expression) or green (has expression). This is derived from expression presence in `gdd.expressions`, not stored as a status column or as fields on the node. There is no status enum, no `recomputeStatus` operation, and no expression columns on `gdd.nodes`. `blocked-by` is a structural constraint — workability is derived at query time by checking whether all dependencies have expressions.
 
 ## Impact on Existing Code
 
@@ -86,7 +84,7 @@ The `potential` -> `active` -> `satisfied` lifecycle treats the graph like a tas
 ### May change
 - `computeTension`: replaced by a simple completeness query (intents without expressions)
 - `queryActive`: redefine as "return intents without expressions" instead of tension-sorted active nodes
-- Status enum and `recomputeStatus`: may simplify significantly
+- Status enum and `recomputeStatus`: **removed** -- red/green derived from expression presence
 - `createEdge` with `blocked-by`: semantics shift from scheduling to structural
 
 ### Unchanged

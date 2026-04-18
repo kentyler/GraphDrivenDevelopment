@@ -14,10 +14,12 @@ The system supports multiple actor types — humans, LLM agents, application use
 CLAUDE.md                        Entry point — read this first
 skills/
   foundations.md                 Why the system is shaped this way
-  intent-graph.md                The technical spec — vocabulary, operations, layers 0-6
+  intent-graph.md                The technical spec — vocabulary, operations, layers 0-7
   agents.md                      Agent definitions — scope, trust, triggers
   graph-completeness.md          The completeness model — red/green, no tension scores
   graph-merge.md                 Cross-graph collaboration
+  mcp-server.md                  MCP server — build instructions, tool definitions, connectors
+  ui-client.md                   UI client — user-facing surfaces as external MCP clients
   community.md                   Optional — post build reports to GitHub Discussions
 ```
 
@@ -26,9 +28,10 @@ skills/
 1. Clone this repo
 2. Open it in your LLM tool of choice (Claude Code, Cursor, Windsurf, etc.)
 3. Let it read `CLAUDE.md`, which directs it to the skill files
-4. It will set up PostgreSQL, build the schema, and implement all layers
+4. It will create a sibling `GDD` directory, set up PostgreSQL, build the schema, and implement all layers including the MCP server
+5. User-facing surfaces (natural language intake, application UIs) are built separately as MCP clients — see `skills/ui-client.md`
 
-The skill files describe *what* needs to exist, not *how* to build it. Your LLM makes the implementation choices.
+This repo is the instruction set — the LLM reads from here but builds in separate directories. The backend goes in `GDD`, user-facing UIs go in their own directory (e.g., `GDD-UI`). The skill files describe *what* needs to exist, not *how* to build it. Your LLM makes the implementation choices.
 
 ## Requirements
 
