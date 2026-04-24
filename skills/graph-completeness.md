@@ -1,14 +1,14 @@
 # Graph Completeness Model
 
-**This is the decision log that produced the current spec.** The decisions below have been applied to `intent-graph.md`. Operation names referenced in the "Impact on Existing Code" section (e.g., `computeTension`, `queryActive`, `recomputeStatus`, `applyCommit`) refer to an earlier design and no longer exist in the current spec. This document is retained as the reasoning record — the authoritative spec is `intent-graph.md`.
+**This is the decision log that produced the current spec.** The decisions below have been applied to `intent-graph.md` and `intent-graph-layers.md`. Operation names referenced in the "Impact on Existing Code" section (e.g., `computeTension`, `queryActive`, `recomputeStatus`, `applyCommit`) refer to an earlier design and no longer exist in the current spec. This document is retained as the reasoning record -- the authoritative spec is `intent-graph.md`.
 
 Resolves `gap-tension-derivation`. Emerged from discussion on 2026-04-15.
 
-## Core Principle: The House Metaphor
+## Core Principle: The Accumulated Plans
 
-The graph is a house. A house is always what it is — when you add a room, it's there. When you tear one down, it's gone. There is no state where the house has a "planned room" that doesn't exist yet.
+The graph is not the house -- it is the accumulated set of plans. The house is projected from the plans. Every plan ever drawn remains in the set, but superseded plans are marked as such. The current house is derived from the plans that have not been superseded.
 
-Intents come into existence *with* their expression. There may be a brief transient moment (construction), but the graph does not enter a special waiting state. It assumes all intents are intended to be expressed.
+Intents come into existence *with* their expression. There may be a brief transient moment (construction), but the graph does not enter a special waiting state. It assumes all intents are intended to be expressed. The graph is write-only -- intents are never removed or modified, only superseded.
 
 ## Decisions
 
@@ -38,35 +38,41 @@ Following XP: the expression only needs to satisfy the test. It could be a liter
 
 ### 4. The Andon Cord
 
-If an LLM is creating an intent but cannot articulate a test condition, that's diagnostic information — the requirement isn't understood well enough. The LLM should:
+If any actor discovers a blocker or cannot articulate a test condition, that's diagnostic information -- the requirement isn't understood well enough, or something is incomplete at a specific location. The actor should:
 
 - **Not** create an intent with a null test condition
-- **Instead** create a `gap` node — surfacing the ambiguity for human resolution
+- **Instead** create a `gap` node -- surfacing the blocker for resolution
+- When the blocker is resolved, create a `decision` node with a `closes` edge to the gap
 
-The gap *is* the pulled andon cord. Intents are commitments (test defined). Gaps are questions (test not possible yet). Compose nodes are structural — their test is "all children satisfied," not hand-written.
+The gap IS the incompleteness -- no actor attribution metadata is needed because the content carries the perspective. Decisions are the counterpart to gaps: an authored closure recording what was chosen, alternatives considered, and scope governed.
 
-Three node kinds, three test condition rules:
+Intents are commitments (test defined). Gaps are detected blockers (test not possible yet). Decisions are authored closures (records what was chosen and why). Signals are environmental events (the thing already happened). Compose nodes are structural -- their test is "all children satisfied," not hand-written.
+
+Five node kinds, five test condition rules:
 - **Intent nodes**: test condition required (the verifiable claim)
-- **Gap nodes**: no test condition (that's what makes them gaps)
+- **Gap nodes**: no test condition (that's what makes them gaps -- they are blockers)
+- **Decision nodes**: no test condition (they are deliberation nodes, not operational ones)
+- **Signal nodes**: no test condition (the event already happened -- there is nothing to verify)
 - **Compose nodes**: structural test (all `contains` children are satisfied)
 
-This replaces the old trust scoping rule that said clients can't create test conditions. Any actor that can state an intent can state what done looks like. If they can't state what done looks like, they don't have an intent — they have a question.
+This replaces the old trust scoping rule that said clients can't create test conditions. Any actor that can state an intent can state what done looks like. If they can't state what done looks like, they don't have an intent -- they have a question.
 
-### 5. The graph doesn't inscribe its own history
+### 5. The graph inscribes its own history
 
-The graph is versioned (mutations table tracks before/after state). The graph itself represents current intent only:
+**Reversed from original decision.** Under write-only semantics, the graph IS its own history. There is no separate mutation log.
 
-- A node no longer intended is **removed**, not suspended or superseded
-- History lives in the mutation log, not in the graph topology
-- The `supersedes` edge type may be unnecessary — you delete the old node, create the new one, and the mutation log records both
+- A node no longer intended is **superseded** via a `supersedes` edge (new -> old), not removed
+- History lives in the graph topology -- the `supersedes` edge chain IS the history
+- The `supersedes` edge type is needed: it records what replaced what, and the chain is navigable
+- Current intent is derived from supersession structure: a node with no `supersedes` edge pointing at it is current
 
-### 6. Cascading removal
+### 6. Cascading redness (replaces cascading removal)
 
-Removing an intent must cascade. If intent A is removed and intent B depended on A:
-- The impact must be dealt with as part of the removal
-- This is structural (like tearing down a load-bearing wall), not administrative
+**Revised from original decision.** There is no removal. Superseding an upstream intent turns downstream dependents red -- their dependency structure has been affected. The red/green mechanism surfaces the impact naturally.
 
-Cascade semantics need to be defined in implementation.
+- Supersession does not cascade as deletion -- it cascades as redness
+- Actors discover the impact through `queryIncomplete` and address it through the normal loop
+- No two-phase confirmation, no agent thresholds for cascade size -- all unnecessary under supersession
 
 ### 7. Status removed
 
@@ -75,19 +81,25 @@ Cascade semantics need to be defined in implementation.
 ## Impact on Existing Code
 
 ### Must change
-- `createIntent`: reject null/missing `test_condition`
+- `createIntent`: reject null/missing `test_condition` for intent types. Accept null for gaps, decisions, compose.
 - `clientSession` LLM prompt: remove "clients cannot create test conditions"; instead instruct: create intent with test if clear, create gap if not
-- `transduceExternal` LLM prompt: same routing — intent with test or gap
-- `translateToGraph` LLM prompt: always require test_condition
-- `applyCommit`: proposal intents must include test_condition
+- `transduceExternal` LLM prompt: same routing -- intent with test or gap
+- `translateToGraph` LLM prompt: always require test_condition for intent types
 
-### May change
-- `computeTension`: replaced by a simple completeness query (intents without expressions)
-- `queryActive`: redefine as "return intents without expressions" instead of tension-sorted active nodes
-- Status enum and `recomputeStatus`: **removed** -- red/green derived from expression presence
-- `createEdge` with `blocked-by`: semantics shift from scheduling to structural
+### New operations
+- `createGap`: convenience operation for creating gap nodes (notes required)
+- `createDecision`: create decision nodes with optional `closes[]` array of gap IDs
+- `supersedeIntent`: create `supersedes` edge (new -> old), mark old as superseded
+
+### Removed
+- `removeIntent`: no removal under write-only semantics -- replaced by `supersedeIntent`
+- `createSession`, `closeSession`, `sessionDiff`, `sessionHistory`: no sessions
+- `sessionProjection`, `intersectGraphs`: no session-based projections
+- Sessions table, mutations table: removed from schema
+- Session status enum, actor type enum: removed
+- `computeTension`, `queryActive`, `recomputeStatus`: replaced by `queryIncomplete`
+- Status enum: removed -- red/green derived from expression presence
 
 ### Unchanged
 - `recordExpression`: still the mechanism that turns red to green
-- Hybrid session mode: becomes more important — explorations hold uncommitted thinking, graph holds expressed reality
-- Mutation tracking: still the history/versioning layer
+- `createEdge`: now supports six edge types (added `supersedes`, `closes`)

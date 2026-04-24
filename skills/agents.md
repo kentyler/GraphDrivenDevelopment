@@ -1,6 +1,6 @@
 # Agents
 
-Agents are named, scoped, trust-bounded autonomous actors. Their definitions live in the `gdd.agents` table — persistent, queryable, versionable through the same mutation log as everything else.
+Agents are named, scoped, trust-bounded autonomous actors. Their definitions live in the `gdd.agents` table — persistent, queryable, part of the graph's operational state.
 
 ## What an agent definition separates
 
@@ -11,7 +11,7 @@ In the popular sense, "agent" bundles together things the graph model keeps sepa
 | Who the actor is | Agent row: id, name, metadata |
 | What it works on | Agent row: scope (projection spec, intent IDs, or tag) |
 | What it can do | Agent row: trust level (write permissions on node types) |
-| How it works | The standard intent session loop — same for all actors |
+| How it works | The standard loop — same for all actors |
 
 An agent is not a new kind of thing. It is a precise, persistent definition of an autonomous actor that runs the same loop every actor runs.
 
@@ -82,10 +82,7 @@ scope           jsonb       Jurisdiction definition (see Scope below)
 trust_level     enum        full | express-only | gaps-only
 trigger         jsonb       When to activate (see Trigger below)
 status          enum        defined | active | paused
-current_session text        FK to gdd.sessions (nullable) — the session currently running
-created_by      text        Who defined this agent
-created_at      timestamp   When defined
-session_id      text        Which session created this definition
+created_at      timestamp   When defined (administrative metadata)
 ```
 
 ### Scope
@@ -135,7 +132,7 @@ The trigger is part of the agent's identity — it lives in the graph. The sched
 ### Status
 
 - **defined**: Agent exists but is not running
-- **active**: Agent is currently executing (has a current_session)
+- **active**: Agent is currently executing
 - **paused**: Agent was running but stopped (gap encountered, scope exhausted, manual pause)
 
 ## Operations
@@ -146,32 +143,30 @@ Create an agent definition.
 
 **Input**: id, name, scope, trust_level, trigger (defaults to manual)
 **Output**: Agent row in gdd.agents
-**Session**: Creating an agent is a graph mutation — it happens within an intent session
 
 ### `activateAgent`
 
 Start an agent running.
 
 1. Read the agent definition from gdd.agents
-2. Open an intent session with actor_type='agent', actor_id=agent.id
-3. Set agent.status to 'active', agent.current_session to the new session
-4. Provide `renderLLM` output filtered to the agent's scope
-5. Agent runs the standard loop:
+2. Set agent.status to 'active'
+3. Provide `renderLLM` output filtered to the agent's scope
+4. Agent runs the standard loop:
    - `queryIncomplete` (within scope) → pick highest-unblocking red intent
    - `buildProjection` → understand context
    - Execute → write code, modify state
    - `recordExpression` → turn intent green
    - Loop
-6. Agent stops when:
+5. Agent stops when:
    - All intents in scope are green
    - A gap is created (agent hit something it can't resolve)
    - Manual stop
-7. Close the session, set agent.status to 'paused' or 'defined'
-8. If the session produced source artifacts, commit and push
+6. Set agent.status to 'paused' or 'defined'
+7. If the work produced source artifacts, commit and push
 
 ### `queryAgents`
 
-List agents with their status, scope, current sessions, and gap counts.
+List agents with their status, scope, and gap counts.
 
 **Input**: Optional filters (status, scope overlap with intent)
 **Output**: Array of agent definitions with current state

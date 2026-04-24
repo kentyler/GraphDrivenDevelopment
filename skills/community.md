@@ -4,11 +4,11 @@ Optional. The user must opt in before any of this is activated.
 
 ## What this does
 
-When enabled, the system posts build reports to the GitHub Discussions page at `kentyler/GraphDrivenDevelopment` after session close. This creates a shared record of how different models, in different environments, interpret and build from the same skill files.
+When enabled, the system posts build reports to the GitHub Discussions page at `kentyler/GraphDrivenDevelopment` after an agent completes work. This creates a shared record of how different models, in different environments, interpret and build from the same skill files.
 
 What gets posted:
 
-- **Build reports** — after a session closes, a summary: which intents were expressed, which gaps were created, which model ran the session, how long it took.
+- **Build reports** — after an agent completes work, a summary: which intents were expressed, which gaps were created, which model ran the agent, what was produced.
 - **Gap nodes** — gaps created during build sessions are already structured in exactly the right form: what was known, what wasn't articulable, what needs human resolution. Posting them to Discussions surfaces ambiguity for whoever can resolve it, with full context.
 
 What does NOT get posted:
@@ -26,7 +26,7 @@ The skill files improve through triangulation. When multiple models (Claude, GPT
 - Which parts of the instructions were ambiguous? (multiple models created gaps at the same point)
 - Which parts were clear? (all models expressed the same intent without difficulty)
 
-A gap created during a build session at 2am in Tokyo appears in Discussions before anyone wakes up, with full context, ready for whoever can resolve it. The loop between implementation and instruction improvement closes automatically.
+A gap created during a build run at 2am in Tokyo appears in Discussions before anyone wakes up, with full context, ready for whoever can resolve it. The loop between implementation and instruction improvement closes automatically.
 
 ## Setup
 
@@ -79,16 +79,16 @@ The Discussions page should have at least these categories:
 
 | Category | Purpose |
 |----------|---------|
-| Build Reports | Automated session summaries from build runs |
-| Gaps | Gap nodes surfaced during implementation — ambiguities needing resolution |
+| Build Reports | Automated summaries from build runs |
+| Gaps | Gap nodes surfaced during builds — ambiguities needing resolution |
 | Skill File Feedback | Human observations about the instructions — what worked, what didn't |
 | General | Everything else |
 
 ## Integration with agents
 
-For agents, this is a post-session hook. After `closeSession`, if community reporting is enabled, the agent posts its session diff and any gap nodes it created. The agent's `actor_id` identifies which model ran the session.
+For agents, this is a post-work hook. After `activateAgent` completes, if community reporting is enabled, the agent posts a summary of the nodes and edges it created plus any gap nodes. The agent's `id` identifies which agent ran; the active LLM provider identifies which model executed it.
 
-This does not require changes to the agent table or the session model. It is a side effect of session close, gated by the user's opt-in and the presence of the GitHub token. The graph remains the source of truth; Discussions is a read-only mirror of selected session outputs.
+This does not require changes to the agent table. It is a side effect of agent completion, gated by the user's opt-in and the presence of the GitHub token. The graph remains the source of truth; Discussions is a read-only mirror of selected outputs.
 
 ## The opt-in conversation
 
@@ -99,4 +99,4 @@ When the building LLM asks the user about participation, it should explain:
 3. What it's for (improving the skill files through multi-model feedback)
 4. What's needed (a GitHub token with `write:discussion` scope)
 
-If the user says no, nothing changes. The system works identically without it. If the user says yes, the token is stored as an environment variable and the post-session hook is enabled.
+If the user says no, nothing changes. The system works identically without it. If the user says yes, the token is stored as an environment variable and the post-work hook is enabled.

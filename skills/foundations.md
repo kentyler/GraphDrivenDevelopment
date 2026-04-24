@@ -10,7 +10,7 @@ Read this before the technical spec. The first half explains why the system is s
 
 A task in a backlog carries no context. Every time you pick one up, you reconstruct what it depends on, what it enables, what "done" means, what was tried before. The context lives in people's heads, in Slack threads, in meeting notes — anywhere except the task itself.
 
-An intent node carries its context structurally. What it depends on is in its `blocked-by` edges. What it enables is in the reverse of those edges. What "done" means is in its test condition. What was produced is in its expression. What was tried is in the session history.
+An intent node carries its context structurally. What it depends on is in its `blocked-by` edges. What it enables is in the reverse of those edges. What "done" means is in its test condition. What was produced is in its expression. What was tried is in the supersession chain.
 
 The graph exists because context should be structural — encoded in the relationships between nodes — not reconstructed from memory every time someone picks up the work. This is the foundational choice. Everything else follows from it.
 
@@ -34,7 +34,7 @@ This recursion is not a demo or a convenience. It is a proof. If the intent grap
 
 A system that requires a separate specification language for its own construction has a gap between its representation and reality. The intent graph closes that gap. The representation IS the specification. Any actor that can read the graph can build the system. Any actor that can build the system can extend it.
 
-The recursion bottoms out somewhere, and the system names that somewhere explicitly. The root intent (`gdd-root`) exists before any session creates it — it is inserted during schema setup, outside the session/mutation mechanism. All bootstrap sessions reference it. This is not a hack; it is the honest acknowledgment that self-hosting systems have a founding moment that precedes the rules they subsequently enforce. The root intent is the unmoved mover, and it is documented as such rather than hidden as an implementation detail.
+The recursion bottoms out somewhere, and the system names that somewhere explicitly. The root intent (`gdd-root`) exists before any graph operation creates it — it is inserted during schema setup, outside the normal graph mechanism. This is not a hack; it is the honest acknowledgment that self-hosting systems have a founding moment that precedes the rules they subsequently enforce. The root intent is the unmoved mover, and it is documented as such rather than hidden as an implementation detail.
 
 ### The TOC lineage
 
@@ -72,19 +72,31 @@ The intent graph has none of this. There is one graph. It represents what exists
 
 The future state is not a document, a diagram, or a separate artifact. The future state is just "everything green." There is no bridge to build between current and future because they are not separate things. There is one world with holes in it, and the holes are typed, testable, and dependency-ordered.
 
+The graph accumulates intention. Superseded intents remain in the graph — they are not "current," but they are not deleted either. Current is derived from supersession structure: an intent with no `supersedes` edge pointing at it is current. An intent that has been superseded is historical. "Everything green" still means done, but the graph also contains the record of how it got there. The history is the topology, not a separate log.
+
 When you are building this system, resist adding planning artifacts. No "planned" status. No "proposed" intents. No separation of "what we want" from "what we have." If something needs to exist, it is a red intent now. If you can't articulate what it needs to be, it is a gap now. Both exist in the present.
 
-### The house, not the blueprint
+### The plans, not the blueprint
 
-The graph is a house. When you add a room, it's there. When you tear one down, it's gone. There is no state where the house has a "planned room" that doesn't exist yet, or a "deprecated room" that's still somehow in the structure.
+The graph is not the house — it is the accumulated set of plans. The house is projected from the plans. Every plan ever drawn remains in the set, but superseded plans are marked as such. The current house is derived from the plans that have not been superseded.
 
 This means:
 
-- An intent that is no longer intended is **removed**, not suspended, archived, or marked obsolete. The mutation log preserves its history. The graph holds only what is.
-- Removal cascades structurally. Removing a load-bearing wall brings down the floors above. This is not a policy choice — it is a consequence of the structure.
+- An intent that is no longer intended is **superseded**, not removed. A new intent (or decision) replaces it via a `supersedes` edge. The old intent remains in the graph — it is historical, not current. Current is derived from supersession structure.
+- Supersession cascades as redness, not as deletion. Superseding an upstream intent turns downstream dependents red — their dependency structure has changed. The red/green mechanism surfaces the impact naturally.
 - There is no "draft" mode, no "review" state, no approval workflow baked into the graph. If an intent exists, it exists. If it has a test condition, it is a commitment. If it cannot have a test condition, it is a gap — an honest statement of "we know this much and not more."
 
 When you are building this system, resist adding lifecycle states to intents. An intent is red (no expression) or green (has expression). That is derived from the data, not stored as a status. Every status field is an attempt to make the graph track process rather than reality.
+
+### Graph reset, not pruning
+
+A write-only graph accumulates indefinitely. Superseded intents, closed gaps, historical decisions — none of it is ever removed. Eventually the accumulated graph becomes unwieldy: projections traverse long supersession chains, the ratio of current to historical nodes shifts, and the graph's size outgrows its utility as a working surface.
+
+The response is not pruning. Pruning contradicts write-only semantics and requires judgment calls about what to discard — judgment that belongs in the graph, not in a maintenance operation applied to it. Instead, when the graph becomes unwieldy, seed a new graph from the old one. Project the current state — all non-superseded intents, their edges, their expressions — into a fresh graph. The old graph is archived whole. The new graph starts clean, carrying forward only what is current.
+
+This is a natural lifecycle, not a failure mode. A graph that has accumulated enough history to need a reset has served its purpose — it recorded the full trajectory of intention from founding to the present. The reset is not loss; it is the graph equivalent of closing a ledger and opening a new one, with the opening balances carried forward.
+
+No mechanism for graph reset exists yet. When it does, the operation should be: project current state, write it to a new graph, archive the old one. The projection that determines "current" is the same projection that `queryIncomplete` uses — no new logic required, just a new destination.
 
 ### Completeness, not priority
 
@@ -100,7 +112,7 @@ When you are building this system, resist adding priority fields, urgency indica
 
 The graph is correctly silent on dates. Dates are predictions about execution time, and the graph does not model execution time. But organizational stakeholders need calendar anchors, and "we don't do estimates" is not a viable answer in most contexts.
 
-The resolution: separate the graph's commitments from forecast views derived from graph state. The graph knows the dependency structure and the current red/green state. A projection can compute: given current velocity (expressions recorded per session, sessions per day), how long does the remaining red subgraph take to clear? That is not a commitment in the graph — it is a read-only forecast, always visibly derived from current state, always updated as the graph changes.
+The resolution: separate the graph's commitments from forecast views derived from graph state. The graph knows the dependency structure and the current red/green state. A projection can compute: given current velocity (expressions recorded per unit time), how long does the remaining red subgraph take to clear? That is not a commitment in the graph — it is a read-only forecast, always visibly derived from current state, always updated as the graph changes.
 
 Forecasts belong in the human-legible representation, not in the graph itself. No date fields on intents. No deadline columns in the nodes table. The forecast is a view — like `renderHuman`, it reads from the graph without writing to it. When velocity changes, the forecast changes. When intents are added or removed, the forecast changes. It is honest about what it is: a projection of current pace over remaining structure.
 
@@ -110,7 +122,7 @@ When you are building this system, resist adding date or deadline fields to the 
 
 In most agent frameworks, agents are external actors that operate on a system. They have configurations, policies, permission layers, and orchestrators — all defined outside the thing they're working on. The agent is a subject; the system is an object.
 
-Here, agents are graph state. An agent definition lives in `gdd.agents`. Its scope is a projection of the graph — not a permission boundary imposed from outside, but the shape of what the agent can perceive. Its trust level is what operations the session type admits — not a policy enforced by middleware, but a structural property of the session. Its trigger is declarative graph state — not an external scheduler's configuration, but part of the agent's identity.
+Here, agents are graph state. An agent definition lives in `gdd.agents`. Its scope is a projection of the graph — not a permission boundary imposed from outside, but the shape of what the agent can perceive. Its trust level determines what operations the agent can perform — not a policy enforced by middleware, but a structural property of the agent definition. Its trigger is declarative graph state — not an external scheduler's configuration, but part of the agent's identity.
 
 The consequence: an agent doesn't interact with the graph from outside. It is inside the graph, reading what the graph lets it see (scope), writing what the graph lets it write (trust), activated when the graph's state changes in ways it declared interest in (trigger). The constraints aren't imposed on the agent — they emerge from the same structure the agent operates on.
 
@@ -122,15 +134,17 @@ When you are building this system, resist adding:
 
 Coordination happens through the graph. Agent A records an expression on an intent, intents in Agent B's scope that were blocked by it become workable, B's event trigger fires. No messages were passed. The dependency structure is the coordination mechanism.
 
-Oversight happens through the graph. An agent's work is sessions in the mutation log. An agent that gets stuck creates a gap with notes. The gap is visible to whoever defined the agent — through the same `queryIncomplete` they use for their own work. There is no separate monitoring channel because the graph IS the monitoring channel.
+Oversight happens through the graph. An agent's work is visible as nodes, edges, and expressions it created. An agent that gets stuck creates a gap with notes. The gap is visible to whoever defined the agent — through the same `queryIncomplete` they use for their own work. There is no separate monitoring channel because the graph IS the monitoring channel.
 
 ### The andon cord is universal
 
-Any actor — human, agent, client — that cannot articulate a test condition must not create an intent. It must create a gap instead, recording everything it does know in the gap's notes.
+Any actor — human, agent, client — that discovers a blocker or incompleteness at a specific location must surface it. If the actor cannot articulate a test condition, it must create a gap instead of an intent, recording everything it does know in the gap's notes. The gap IS the incompleteness — no actor attribution metadata is needed because the content carries the perspective.
 
 This applies to more than test articulability. An express-only agent satisfying an intent is making an interpretive choice: the test condition says "users can log in with email" and the agent picks an implementation. If the agent is uncertain — if multiple approaches satisfy the test and the choice between them matters — the right action is to create a gap, not to guess. The andon cord applies to expression confidence, not just test articulability.
 
 The gap is not an admission of failure. It is the boundary between what is articulable and what is not, with the articulable part preserved. A system that never produces gaps is not a system that has no ambiguity — it is a system that is hiding its ambiguity inside silent choices.
+
+Decisions are the counterpart to gaps. A decision is an authored closure — it records what was chosen, what alternatives were considered, and what scope is governed by the choice. A `closes` edge from a decision to a gap marks the gap as resolved. Gaps are detected blockers; decisions are authored resolutions.
 
 ### The loop is the loop
 
@@ -138,15 +152,15 @@ Every actor runs the same loop:
 
 1. Find what's red
 2. Read the projection
-3. Work within a session
+3. Work — create nodes, edges, expressions
 4. Pull the andon cord if stuck
 5. Watch the graph turn green
 
-Humans run this loop. Agents run this loop. Clients run this loop (transduced through `clientSession`). External forces run this loop (transduced through `transduceExternal`).
+Humans run this loop. Agents run this loop. Clients run this loop (transduced through `clientSession`). External forces run this loop (transduced through `transduceExternal`), landing first as signal nodes — the graph's write surface for the environment — before being interpreted into operational elements.
 
 There is no special agent protocol, no human workflow, no client pipeline. The differences between actor types are: how they enter the graph (directly or transduced), what they can see (scope), and what they can write (trust). The loop itself is invariant.
 
-When you are building this system, resist creating separate code paths for different actor types. The operations are the same. The session model is the same. The mutation log is the same. Actor differences are captured by the session's `actor_type` and, for agents, the scope and trust constraints. The loop does not branch on who is running it.
+When you are building this system, resist creating separate code paths for different actor types. The operations are the same. Actor differences are captured by scope and trust constraints. The loop does not branch on who is running it.
 
 ### The LLM constructs the intent
 
@@ -166,7 +180,7 @@ Consistency is a human readability concern. Humans need clean taxonomies because
 
 If a human wants to inspect the graph, the LLM renders it in whatever organized form the human finds useful — grouped by domain, sorted by recency, filtered by status. The presentation is a view, not the structure. The structure serves the LLM. The views serve the human.
 
-This applies to semantic consistency — names, descriptions, labeling style. Structural consistency is different and is enforced. Intent types must come from the fixed vocabulary. Edge types must be one of the four defined types. Status values must be from the enum. The graph's operations — dependency traversal, completeness queries, projection building, status recomputation — depend on these structural categories being correct. The LLM can name an intent however it likes, but it must classify it correctly.
+This applies to semantic consistency — names, descriptions, labeling style. Structural consistency is different and is enforced. Intent types must come from the fixed vocabulary. Edge types must be one of the six defined types. The graph's operations — dependency traversal, completeness queries, projection building — depend on these structural categories being correct. The LLM can name an intent however it likes, but it must classify it correctly.
 
 When you are building this system, resist adding naming convention enforcement, style guides, or review steps that exist solely to make the graph look uniform. Optimize for what makes the LLM's reasoning effective — rich context in each intent, clear test conditions, good expressions — not for aesthetic consistency. The only way to guarantee consistency across all intents would be big design up front, which contradicts the system's core commitment to emergent structure.
 
@@ -187,6 +201,14 @@ The LLM maintains a skill directory — a table (`gdd.skills`) that indexes all 
 The skill directory also serves as a registry of external agency — every capability the system can call on, whether it is a local skill file, an API endpoint, an Office tool via the xlsx/docx/pptx skills, or any tool reachable through an MCP connector. The directory tells the LLM what execution surfaces exist and how to reach them before it starts reasoning about the work.
 
 The full arc from user ask to autonomous operation is one mechanism: the LLM writes skill files as it works. Recurring operations accumulate complete skill file sets. Those sets are the micro-apps. Granting a trigger and authorization to a micro-app makes it an agent. Powering a UI with a micro-app makes it a traditional application. The difference between an agent and an app is only the interface — an agent has a programmatic trigger, an app has a human-facing UI. A traditional application is an agent designed to be manipulated by human users. Skill files are the unit at every stage.
+
+### Thinking nodes are blockers
+
+Not every node in the graph requires thinking. `define-table` is mechanical — DDL. `translate` requires judgment. `signal` requires interpretation. The graph already encodes this through the type vocabulary and the three operations that require LLM injection (`transduceExternal`, `clientSession`, `translateRepresentation`).
+
+A node that requires thinking is a point where deterministic execution stops. The graph can be executed mechanically — creating tables, inserting rows, wiring endpoints — until it reaches a node that needs judgment. That node is a blocker. It does not form a "thinking chain" with other thinking nodes. It is simply the boundary where automation yields to cognition.
+
+This matters for agent design. An agent scoped to a subgraph that contains no thinking nodes can execute fully autonomously. An agent whose scope includes thinking nodes will stop at each one. The intelligence map of a graph is a projection: which nodes require thinking, and therefore where does deterministic execution halt. No new structure is needed — it is derivable from the type vocabulary.
 
 ### Execution surfaces
 
