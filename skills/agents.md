@@ -155,7 +155,7 @@ Start an agent running.
    - `queryIncomplete` (within scope) → pick highest-unblocking red intent
    - `buildProjection` → understand context
    - Execute → write code, modify state
-   - `recordExpression` → turn intent green
+   - `recordExpression` → create expression node + satisfies edges, turn intent(s) green
    - Loop
 5. Agent stops when:
    - All intents in scope are green

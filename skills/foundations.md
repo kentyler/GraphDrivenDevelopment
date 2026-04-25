@@ -86,7 +86,7 @@ This means:
 - Supersession cascades as redness, not as deletion. Superseding an upstream intent turns downstream dependents red — their dependency structure has changed. The red/green mechanism surfaces the impact naturally.
 - There is no "draft" mode, no "review" state, no approval workflow baked into the graph. If an intent exists, it exists. If it has a test condition, it is a commitment. If it cannot have a test condition, it is a gap — an honest statement of "we know this much and not more."
 
-When you are building this system, resist adding lifecycle states to intents. An intent is red (no expression) or green (has expression). That is derived from the data, not stored as a status. Every status field is an attempt to make the graph track process rather than reality.
+When you are building this system, resist adding lifecycle states to intents. An intent is red (no incoming satisfies edge) or green (has an incoming satisfies edge from an expression node). That is derived from the graph topology, not stored as a status. Every status field is an attempt to make the graph track process rather than reality.
 
 ### Graph reset, not pruning
 
@@ -144,7 +144,7 @@ This applies to more than test articulability. An express-only agent satisfying 
 
 The gap is not an admission of failure. It is the boundary between what is articulable and what is not, with the articulable part preserved. A system that never produces gaps is not a system that has no ambiguity — it is a system that is hiding its ambiguity inside silent choices.
 
-Decisions are the counterpart to gaps. A decision is an authored closure — it records what was chosen, what alternatives were considered, and what scope is governed by the choice. A `closes` edge from a decision to a gap marks the gap as resolved. Gaps are detected blockers; decisions are authored resolutions.
+Decisions are the counterpart to gaps. A decision is an authored closure — it records what was chosen, what alternatives were considered, and what scope is governed by the choice. A `closes` edge from a decision to a gap marks the gap as resolved. Then an expression node with a `satisfies` edge to the gap turns it green — the expression's artifacts reference the decision, recording that the gap was genuinely resolved. Gaps are detected blockers; decisions are authored resolutions; the expression completes the lifecycle.
 
 ### The loop is the loop
 
@@ -180,7 +180,7 @@ Consistency is a human readability concern. Humans need clean taxonomies because
 
 If a human wants to inspect the graph, the LLM renders it in whatever organized form the human finds useful — grouped by domain, sorted by recency, filtered by status. The presentation is a view, not the structure. The structure serves the LLM. The views serve the human.
 
-This applies to semantic consistency — names, descriptions, labeling style. Structural consistency is different and is enforced. Intent types must come from the fixed vocabulary. Edge types must be one of the six defined types. The graph's operations — dependency traversal, completeness queries, projection building — depend on these structural categories being correct. The LLM can name an intent however it likes, but it must classify it correctly.
+This applies to semantic consistency — names, descriptions, labeling style. Structural consistency is different and is enforced. Intent types must come from the fixed vocabulary. Edge types must be one of the seven defined types. The graph's operations — dependency traversal, completeness queries, projection building — depend on these structural categories being correct. The LLM can name an intent however it likes, but it must classify it correctly.
 
 When you are building this system, resist adding naming convention enforcement, style guides, or review steps that exist solely to make the graph look uniform. Optimize for what makes the LLM's reasoning effective — rich context in each intent, clear test conditions, good expressions — not for aesthetic consistency. The only way to guarantee consistency across all intents would be big design up front, which contradicts the system's core commitment to emergent structure.
 

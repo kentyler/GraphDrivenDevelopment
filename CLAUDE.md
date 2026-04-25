@@ -18,7 +18,7 @@ Once the system exists, the graph is your entry point — not the skill files.
 
 ### Actors
 
-Every actor — human, agent, client, or external force — runs the same loop: find what's red, read the projection, work (create nodes, edges, expressions), pull the andon cord if stuck, watch the graph turn green. The loop does not vary by actor type. See `skills/foundations.md` for the full account of why.
+Every actor — human, agent, client, or external force — runs the same loop: find what's red, read the projection, work (create nodes and edges, record expressions as expression nodes with satisfies edges), pull the andon cord if stuck, watch the graph turn green. The loop does not vary by actor type. See `skills/foundations.md` for the full account of why.
 
 What varies between actors is two things: **how they enter the graph** and **what they can write**.
 
@@ -58,16 +58,16 @@ Multiple agents with overlapping scopes create `tensions-with` edges worth surfa
 
 ### Working on the graph
 
-Work is creating graph elements — nodes, edges, expressions. There is no session container.
+Work is creating graph elements — nodes and edges. There is no session container.
 
 1. Query the graph (`queryIncomplete`) to see what's red
 2. Build a projection for the intent you're working on
-3. Do the work — create nodes, edges, expressions
+3. Do the work — create nodes and edges (including expression nodes with satisfies edges)
 4. Record the expression on the intent you satisfied
 5. If the work produced source artifacts (code, schema, configuration), commit and push
 
 `skills/intent-graph.md` — model, vocabulary, edge types, and conventions.
-`skills/intent-graph-layers.md` — layer definitions (Layer 0-7 intent JSON blocks).
+`skills/intent-graph-layers.md` — layer definitions (Layer 0-6 intent JSON blocks).
 `skills/agents.md` — agent definitions: scope, trust levels, activation, the agents table.
 `skills/mcp-server.md` — MCP server: build instructions, tool definitions, connector setup.
 `skills/ui-client.md` — UI client: build the human surfaces as an external MCP client app.
@@ -78,8 +78,8 @@ Work is creating graph elements — nodes, edges, expressions. There is no sessi
 - **Backend**: Node.js/Express (src/server.js)
 - **API**: REST endpoints on port 3000
 - **MCP**: Protocol endpoint at `/mcp` — see `skills/mcp-server.md`
-- **Admin surfaces**: Backend-served web dashboard for direct graph actors — dashboard (what's red), intent detail, gap surface. Served as static files from `public/`, calls the REST API. See Layer 6 `ui-admin-surfaces`.
-- **User surfaces**: External MCP clients. Natural language intake and any user-facing application — Claude Desktop, Excel, Word, CLI — connect through the MCP server. The backend does not serve user-facing surfaces. See Layer 6 `ui-user-surfaces` and `skills/ui-client.md`.
+- **Admin surfaces**: Backend-served web dashboard for direct graph actors — dashboard (what's red), intent detail, gap surface. Served as static files from `public/`, calls the REST API. See Layer 5 `ui-admin-surfaces`.
+- **User surfaces**: External MCP clients. Natural language intake and any user-facing application — Claude Desktop, Excel, Word, CLI — connect through the MCP server. The backend does not serve user-facing surfaces. See Layer 5 `ui-user-surfaces` and `skills/ui-client.md`.
 
 ## Conventions
 

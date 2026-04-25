@@ -2,9 +2,11 @@
 
 Multiple intent graphs can coexist — different teams, departments, organizations, or projects each maintaining their own graph. When collaboration is needed, graphs are merged through a structured negotiation, not by fiat.
 
+**Post-bootstrap capability.** The operations described here (`mergeProjection`, negotiation sessions) are not part of the bootstrap layer definitions in `intent-graph-layers.md`. The core system works with single-graph operations. When ready to implement cross-graph collaboration, create intents for these operations through the graph itself.
+
 ## Graph identity
 
-Each intent graph has an identity:
+Each intent graph has an identity, defined in `gdd.graphs` (see Layer 0 in `intent-graph-layers.md`):
 
 ```
 gdd.graphs:
@@ -14,7 +16,9 @@ gdd.graphs:
   created_at  timestamp
 ```
 
-Every intent node carries a `graph_id` field indicating which graph it belongs to. Edges can cross graph boundaries — a `blocked-by` edge from an intent in graph A to an intent in graph B is a cross-graph dependency.
+Nodes belong to graphs through `gdd.graph_memberships` -- a join table with columns `(graph_id, node_id)` and a unique constraint on the pair. A node can appear in multiple graphs (shared boundary nodes). This replaces a `graph_id` column on nodes, enabling fragments as overlapping subgraphs where shared nodes form the boundary between them.
+
+Edges can cross graph boundaries — a `blocked-by` edge from an intent in graph A to an intent in graph B is a cross-graph dependency.
 
 ## Cross-graph edges
 
@@ -27,6 +31,7 @@ Cross-graph edges are created explicitly, not inferred. Both parties must acknow
 | `blocked-by` | Graph A can't proceed until graph B satisfies something |
 | `tensions-with` | The two graphs have intents that pull in different directions |
 | `refines` | Graph A's intent is a more specific version of graph B's |
+| `satisfies` | An expression node in graph A satisfies an intent in graph B |
 
 `contains` edges do not cross graph boundaries — composition is internal.
 
@@ -39,8 +44,8 @@ The core operation: given two or more graph IDs, produce a projection of their i
 **Input**: Two or more graph IDs
 **Output**: A projection containing:
 
-- **Shared intents** — intents that reference each other across graphs (via cross-graph edges)
-- **Cross-graph edges** — all edges that span graph boundaries
+- **Shared nodes** — nodes that appear in memberships for multiple of the input graphs (boundary nodes). These are found by querying `gdd.graph_memberships` for nodes with memberships in more than one of the specified graphs.
+- **Cross-graph edges** — all edges that span graph boundaries (endpoints in different graphs' memberships)
 - **Test conflicts** — intents in different graphs whose test conditions contradict each other
 - **Throughput comparison** — total downstream throughput in each graph for contested intents
 - **Unresolved gaps** — gaps in either graph that affect the intersection
@@ -100,4 +105,4 @@ The graph makes negotiation concrete:
 
 This is not automatic graph merging. The merge projection is a view — it shows the intersection and surfaces conflicts. Humans (or agents with appropriate trust and scope) resolve the conflicts. The graph provides structure for negotiation, not a substitute for it.
 
-This is also not federated identity. Each graph remains sovereign. Cross-graph edges are bilateral agreements, not imposed connections. Either party can remove their end of a cross-graph edge (which surfaces as a broken dependency in the other graph — visible, not silent).
+This is also not federated identity. Each graph remains sovereign. Cross-graph edges are bilateral agreements, not imposed connections. Either party can remove their end of a cross-graph edge (which surfaces as a broken dependency in the other graph — visible, not silent). Shared boundary nodes (nodes with memberships in multiple graphs) are the structural interface between graphs — removing a node's membership in one graph does not affect its membership in others.

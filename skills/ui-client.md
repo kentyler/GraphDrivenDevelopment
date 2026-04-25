@@ -31,11 +31,11 @@ All data flows through MCP tool calls. The UI does not access the database direc
 
 ## Stack
 
-The building LLM chooses the technology. The only requirement is that the UI can act as an MCP client. A web app, desktop app (Electron, Tauri), CLI dashboard, or terminal UI all work. The Layer 6 intents in `intent-graph.md` define what must be shown, not how.
+The building LLM chooses the technology. The only requirement is that the UI can act as an MCP client. A web app, desktop app (Electron, Tauri), CLI dashboard, or terminal UI all work. The Layer 5 intents in `intent-graph.md` define what must be shown, not how.
 
 ## Surfaces and their MCP tool mappings
 
-These are the user-facing surfaces that connect through MCP. Admin surfaces (dashboard, intent detail, gap surface, session log) are served by the backend — see Layer 6 in `intent-graph.md`.
+These are the user-facing surfaces that connect through MCP. Admin surfaces (dashboard, intent detail, gap surface, session log) are served by the backend — see Layer 5 in `intent-graph.md`.
 
 ### Natural language intake
 
@@ -61,4 +61,4 @@ Build the UI in its own directory — separate from both the skill files (`gdd-i
 
 ## Testing against MCP
 
-The UI's correctness is defined by the Layer 6 test conditions in `intent-graph.md`. Each test condition describes what a human should be able to answer by looking at the surface. The UI passes when those questions are answerable through the MCP-connected interface.
+The UI's correctness is defined by the Layer 5 test conditions in `intent-graph.md`. Each test condition describes what a human should be able to answer by looking at the surface. The UI passes when those questions are answerable through the MCP-connected interface.

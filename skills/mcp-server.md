@@ -36,9 +36,9 @@ Natural language entry point. The user says something; the LLM constructs the in
 
 ### query_incomplete
 
-What's red. Returns active intents that need expressions.
+What's red. Returns intents and gaps with no incoming satisfies edges (excluding expression, decision, and signal nodes). Supports a workable filter to return only red intents whose dependencies are all green.
 
-- **Input**: `{ execution?: "deterministic" | "llm-mediated", scope?: string }` — optional filters
+- **Input**: `{ workable?: boolean }` — when true, returns only red intents whose blocked-by dependencies all have incoming satisfies edges
 - **Maps to**: `queryIncomplete`
 
 ### query_skills
@@ -50,31 +50,87 @@ What capabilities exist. Returns skill directory entries.
 
 ### build_projection
 
-Full context for a given intent — dependencies, test condition, expressions, sessions.
+Full context for a given intent — dependencies, test condition, expression nodes, gaps, decisions, supersession chains.
 
-- **Input**: `{ intent_id: string }`
+- **Input**: `{ intent_id: string, graph_id?: string }` — optional graph_id scopes the projection to nodes within that graph's memberships
 - **Maps to**: `buildProjection` + `renderHuman` or `renderLLM`
 
 ### create_intent
 
-Direct graph operation for actors who speak graph.
+Direct graph operation for actors who speak graph. Handles all node types -- intent types require test_condition, gap/decision/signal nodes require notes, expression nodes require artifacts.
 
-- **Input**: `{ name, type, test_condition, test_verification, description, blocked_by? }`
+- **Input**: `{ name, type, description, test_condition?, test_verification?, blocked_by?: string[], notes?: string, artifacts?: object, throughput?: number }`
 - **Maps to**: `createIntent`
 
 ### record_expression
 
-Record work done against an intent.
+Record work done against one or more intents. Creates an expression node and satisfies edges linking it to the specified intents.
 
-- **Input**: `{ intent_id, artifacts, summary }`
+- **Input**: `{ intent_ids: string[], artifacts: object, name: string, description?: string }`
 - **Maps to**: `recordExpression`
+
+### link_expression
+
+Link an existing expression node to an additional intent it also satisfies.
+
+- **Input**: `{ expression_id: string, intent_id: string }`
+- **Maps to**: `linkExpression`
+
+### create_graph
+
+Create a named graph for organizing nodes.
+
+- **Input**: `{ id: string, name: string, owner: string }`
+- **Maps to**: `createGraph`
+
+### add_node_to_graph
+
+Add a node to a graph (create a membership).
+
+- **Input**: `{ graph_id: string, node_id: string }`
+- **Maps to**: `addNodeToGraph`
+
+### remove_node_from_graph
+
+Remove a node from a graph (delete a membership). The node itself is not deleted.
+
+- **Input**: `{ graph_id: string, node_id: string }`
+- **Maps to**: `removeNodeFromGraph`
+
+### query_graph_nodes
+
+List all nodes belonging to a graph.
+
+- **Input**: `{ graph_id: string, type?: string }`
+- **Maps to**: `queryGraphNodes`
+
+### node_graphs
+
+List all graphs a node belongs to.
+
+- **Input**: `{ node_id: string }`
+- **Maps to**: `nodeGraphs`
 
 ### create_gap
 
 Pull the andon cord.
 
-- **Input**: `{ name, notes }`
-- **Maps to**: gap node creation
+- **Input**: `{ name, notes, blocked_by?: string[] }`
+- **Maps to**: `createGap`
+
+### create_decision
+
+Record what was chosen, alternatives considered, and scope governed. Optionally closes one or more gaps.
+
+- **Input**: `{ name: string, description: string, notes: string, closes?: string[] }` — closes is an array of gap IDs; creates `closes` edges from the decision to each gap
+- **Maps to**: `createDecision`
+
+### supersede_intent
+
+Replace an old intent with a new one. The old intent remains in the graph as history.
+
+- **Input**: `{ new_intent_id: string, old_intent_id: string }`
+- **Maps to**: `supersedeIntent`
 
 ### query_agents
 
@@ -108,6 +164,28 @@ Same steps as Excel, using the Claude for Word add-in.
 
 Same steps as Excel, using the Claude for PowerPoint add-in.
 
+### Claude Code
+
+Claude Code is likely where the builder works. Connecting it to the GDD MCP server means the builder (and any LLM agent working through Claude Code) can query the graph, record expressions, and pull the andon cord without leaving their coding session.
+
+Add to the project-level settings file (`.claude/settings.json` in the build workspace) or global settings (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "gdd": {
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+This uses Streamable HTTP transport -- Claude Code connects to the running Express server. The GDD server must be running before starting the Claude Code session. If the server is not running, the MCP tools will be unavailable but Claude Code will function normally otherwise.
+
+Project-level settings are preferred -- they keep the GDD connection scoped to the build workspace. Global settings make the graph available in all Claude Code sessions, which is useful if the user works across multiple projects that share the same graph.
+
+Once connected, Claude Code gains all GDD MCP tools as available tool calls. The builder can ask Claude Code to query what's red, build a projection, record an expression, or create a gap -- all within the same session where they're writing code. This closes the loop: the builder writes code in Claude Code, and the graph that tracks that work is accessible from the same environment.
+
 ### Claude Desktop
 
 Add to `claude_desktop_config.json`:
@@ -124,7 +202,7 @@ Add to `claude_desktop_config.json`:
 
 ### Any MCP-capable tool
 
-Point the tool's MCP connector at `http://localhost:3000/mcp`. The protocol is standard — any tool that speaks MCP can connect.
+Point the tool's MCP connector at `http://localhost:3000/mcp`. The protocol is standard -- any tool that speaks MCP can connect.
 
 ## Connector skill files
 
