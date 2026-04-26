@@ -21,10 +21,10 @@ Note: The two core graph tables (nodes, edges) and the graph_memberships join ta
     "id": "table-nodes",
     "type": "define-table",
     "name": "Intent nodes table",
-    "description": "Stores all nodes in the global graph -- intents, compose nodes, gap nodes, decision nodes, signal nodes, and expression nodes. Each row has type, test condition, throughput, notes, and artifacts. No status column -- red/green is derived by checking for incoming satisfies edges (from expression nodes to intents). test_condition is nullable: required for intent types (the verifiable claim), null for gap, decision, signal, and expression nodes, and structural for compose nodes ('all contains children have satisfies edges'). artifacts (JSONB, nullable) is used only by expression nodes.",
+    "description": "Stores all nodes in the global graph -- intents, compose nodes, gap nodes, decision nodes, signal nodes, and expression nodes. Each row has type, test condition, throughput, notes, artifacts, and primitive_dna. No status column -- red/green is derived by checking for incoming satisfies edges (from expression nodes to intents). test_condition is nullable: required for intent types (the verifiable claim), null for gap, decision, signal, and expression nodes, and structural for compose nodes ('all contains children have satisfies edges'). artifacts (JSONB, nullable) and primitive_dna (JSONB, nullable) are used only by expression nodes.",
     "table_name": "gdd.nodes",
     "test": {
-      "condition": "Table exists with columns: id, type (typed as gdd.node_type enum), name, description, test_condition (nullable), test_verification, throughput (numeric, nullable), notes (text, nullable), artifacts (JSONB, nullable). No status column. Red/green is derived by checking for incoming satisfies edges from expression nodes. Gap, decision, signal, and expression nodes have null test_condition. All other non-compose types require a non-null test_condition. Only expression nodes use the artifacts column.",
+      "condition": "Table exists with columns: id, type (typed as gdd.node_type enum), name, description, test_condition (nullable), test_verification, throughput (numeric, nullable), notes (text, nullable), artifacts (JSONB, nullable), primitive_dna (JSONB, nullable). No status column. Red/green is derived by checking for incoming satisfies edges from expression nodes. Gap, decision, signal, and expression nodes have null test_condition. All other non-compose types require a non-null test_condition. Only expression nodes use the artifacts and primitive_dna columns.",
       "verification": "SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='nodes'"
     }
   },
@@ -682,6 +682,70 @@ The MCP server makes the graph reachable from external tools. It runs inside the
 ]
 ```
 
+### Layer 7: Semantic Revaluation -- Impact Detection Through Primitive DNA
+
+When a new intent arrives, existing artifacts may be affected not through structural connection but through shared semantic composition. This layer adds the mechanism for detecting that impact. See `skills/revaluation.md` for the full account.
+
+```json
+[
+  {
+    "id": "revaluation",
+    "type": "compose",
+    "name": "Semantic revaluation mechanism",
+    "description": "Impact detection for existing artifacts when new intents arrive. Routes through primitive DNA composition rather than dependency edges. Includes DNA assignment on expressions, primitive signature analysis on intake, and impact detection queries.",
+    "children": ["op-assign-dna", "op-primitive-signature", "op-impact-detection", "ui-impact-surface"]
+  },
+  {
+    "id": "op-assign-dna",
+    "type": "implement-operation",
+    "name": "Assign primitive DNA to expressions",
+    "description": "When recordExpression creates an expression node, the LLM assesses the artifact's primitive composition and writes a weight vector to the primitive_dna field. The same LLM call that produces the expression description also produces the DNA. The vector has four keys: transduction, resolution, boundary, trace -- each a float between 0 and 1 representing relative weight. See foundations.md (Four primitives underlie all artifacts) for the primitive definitions.",
+    "operation_name": "assignPrimitiveDna",
+    "blocked_by": ["op-record-expression"],
+    "test": {
+      "condition": "When recordExpression is called, the resulting expression node has a non-null primitive_dna field containing a JSON object with keys transduction, resolution, boundary, trace, each a number between 0 and 1.",
+      "verification": "Call recordExpression for a test artifact, verify the expression node in gdd.nodes has a valid primitive_dna value."
+    }
+  },
+  {
+    "id": "op-primitive-signature",
+    "type": "implement-operation",
+    "name": "Extract primitive impact signature from new intents",
+    "description": "When clientSession, transduceExternal, or translateRepresentation processes a new intent, the LLM also produces a primitive impact signature -- which primitives the intent exercises (tier 1: operational) or redefines (tier 2: definitional). This piggybacks on the existing LLM call. The signature is ephemeral -- consumed by impact detection, not stored on the intent node.",
+    "operation_name": "extractPrimitiveSignature",
+    "blocked_by": ["op-client-intake", "op-transduce-external", "op-translate-repr"],
+    "test": {
+      "condition": "When a new intent is processed through clientSession, the LLM response includes a primitive impact signature with impacted primitives and tier classification (operational or definitional).",
+      "verification": "Process a test intent through clientSession, verify the response includes a primitive_signature object with primitives array and tier field."
+    }
+  },
+  {
+    "id": "op-impact-detection",
+    "type": "implement-operation",
+    "name": "DNA-based artifact impact detection",
+    "description": "Given a primitive impact signature from a new intent, query the DNA catalog (expression nodes with primitive_dna) for artifacts whose composition overlaps with the impacted primitives. Tier 1 (operational): select expressions where primitive_dna[P] >= threshold for each impacted primitive P. Tier 2 (definitional): select all expressions where primitive_dna[P] > 0 for each redefined primitive P. Returns a ranked list of expression nodes that may be affected.",
+    "operation_name": "detectImpact",
+    "blocked_by": ["op-assign-dna", "op-primitive-signature"],
+    "test": {
+      "condition": "Given a primitive signature impacting Resolution, detectImpact returns expression nodes ordered by their resolution weight, excluding those below threshold. Given a tier 2 signature redefining Boundary, detectImpact returns all expression nodes with any boundary weight.",
+      "verification": "Create test expressions with known DNA, call detectImpact with tier 1 and tier 2 signatures, verify correct filtering and ordering."
+    }
+  },
+  {
+    "id": "ui-impact-surface",
+    "type": "implement-operation",
+    "name": "Impact surface in projections",
+    "description": "When buildProjection or renderHuman includes an intent that triggered impact detection, the impacted artifacts appear as a related section in the projection output -- 'artifacts potentially affected by this intent.' The human sees which existing work might need re-examination. renderLLM includes the impact list for agent consumption.",
+    "operation_name": "surfaceImpact",
+    "blocked_by": ["op-impact-detection", "op-build-projection", "op-render-human", "op-render-llm"],
+    "test": {
+      "condition": "When buildProjection is called for an intent with impact detection results, the projection includes an impact_surface section listing affected expression nodes with their DNA and the matching primitives.",
+      "verification": "Create a test intent that impacts Resolution, build its projection, verify the output contains an impact_surface section with Resolution-heavy expressions."
+    }
+  }
+]
+```
+
 ### Resolved Decisions
 
 These were originally gaps, now resolved:
@@ -695,7 +759,7 @@ These were originally gaps, now resolved:
 These edges connect the intents above:
 
 ```
-foundation-tables, projection-mechanism, dual-repr, actor-integration, human-surfaces, mcp-server  ->  (contained by)  ->  gdd-root
+foundation-tables, projection-mechanism, dual-repr, actor-integration, human-surfaces, mcp-server, revaluation  ->  (contained by)  ->  gdd-root
 table-nodes, table-edges, table-graphs, table-graph-memberships, table-agents, table-skills, table-llm-providers, type-node-type, type-edge-type, type-agent-trust, type-agent-status  ->  (contained by)  ->  foundation-tables
 op-create-intent, op-create-edge                                ->  (blocked-by)    ->  foundation-tables
 op-record-expression                                            ->  (blocked-by)    ->  op-create-intent, op-create-edge
@@ -733,4 +797,9 @@ mcp-endpoint, mcp-tools, mcp-connectors                         ->  (contained b
 mcp-endpoint                                                    ->  (blocked-by)    ->  foundation-tables
 mcp-tools                                                       ->  (blocked-by)    ->  mcp-endpoint, op-query-incomplete, op-query-skills, op-build-projection, op-create-intent, op-record-expression, op-link-expression, op-create-gap, op-client-intake, op-query-agents, op-create-decision, op-supersede, op-create-graph, op-add-node-to-graph, op-remove-node-from-graph, op-query-graph-nodes, op-node-graphs, table-llm-providers
 mcp-connectors                                                  ->  (blocked-by)    ->  mcp-endpoint, table-skills
+op-assign-dna, op-primitive-signature, op-impact-detection, ui-impact-surface  ->  (contained by)  ->  revaluation
+op-assign-dna                                                   ->  (blocked-by)    ->  op-record-expression
+op-primitive-signature                                          ->  (blocked-by)    ->  op-client-intake, op-transduce-external, op-translate-repr
+op-impact-detection                                             ->  (blocked-by)    ->  op-assign-dna, op-primitive-signature
+ui-impact-surface                                               ->  (blocked-by)    ->  op-impact-detection, op-build-projection, op-render-human, op-render-llm
 ```

@@ -58,6 +58,21 @@ This means the graph supports predictive constraint identification, not just rea
 
 The "There is no future state" stance still holds. The graph has no roadmap, no planned-state artifact. But the topology of blocked intents *is* a structural forecast. Long-running intents — things that exist as intention but whose dependencies stretch deep — are what "the future" translates into. As present work satisfies dependencies, the future becomes present. `queryIncomplete` surfaces it. No planning ceremony required.
 
+### Four primitives underlie all artifacts
+
+Every artifact the system produces — every expression node, every skill file, every micro-app — is a characteristic combination of four semantic primitives:
+
+- **Transduction** — data crossing a context boundary. A form that takes user input and writes it to a database is performing transduction. An MCP connector that bridges Excel to the graph is performing transduction. The defining quality is that something passes from one domain of meaning into another.
+- **Resolution** — a determination or bifurcation point. A stock check that decides whether an order can proceed is resolution. A validation rule that accepts or rejects input is resolution. The defining quality is that ambiguity is reduced — multiple possible states collapse to one.
+- **Boundary** — a scope distinction. A permission check that separates what an actor can see from what it cannot is boundary. A schema that defines what belongs in a table and what does not is boundary. The defining quality is that inside and outside are distinguished.
+- **Trace** — a record that persists. An audit log entry is trace. An expression node's artifacts field is trace. The defining quality is that something that happened becomes recoverable.
+
+These are not categories imposed on artifacts after the fact. They are the compositional substrate. An order entry form is heavy Transduction (data crossing contexts), contains Resolution (stock check, credit check), light Trace, minimal Boundary. A permissions screen is almost pure Boundary. A financial close report is heavy Trace, heavy Resolution, minimal Transduction. The primitive composition — the DNA — is what the artifact *is*, structurally.
+
+The primitives matter because they are the routing mechanism for impact detection. When a new intent arrives, its primitive signature — which primitives it exercises or redefines — determines which existing artifacts might be affected. Artifacts whose DNA is weighted toward the impacted primitive are candidates. This is faster and more complete than dependency traversal: two artifacts with no structural connection but heavy shared primitive weight will both surface as impacted. See `skills/revaluation.md` for the full mechanism.
+
+The primitive vocabulary is self-describing. Adding a primitive is a Boundary operation (drawing a new distinction) combined with Resolution (determining the existing set is insufficient). Removing one is Resolution plus Boundary collapse. Redefining one is the most extreme case — a tier 2 event that touches every artifact carrying that primitive. Changes to the vocabulary are expressible in the vocabulary, which means the system can detect and process the need to revise its own foundations through the same mechanism it uses for any other impact.
+
 ### Dual representation exists because actors differ
 
 The graph serves actors with fundamentally different cognitive needs. A human reading a projection needs narrative: what's done, what's next, what's blocked, what decisions were made. An LLM reading the same projection needs structure: full node data, edge types, test conditions, dependency chains — dense, relational, navigable.

@@ -63,7 +63,7 @@ After creating the schema and tables, insert the root intent — the axiomatic g
   "type": "compose",
   "name": "GDD system exists and is operational",
   "description": "The axiomatic ground of the intent graph. This intent exists before any graph operation creates it. The recursion of self-hosting bottoms out here.",
-  "children": ["foundation-tables", "projection-mechanism", "dual-repr", "actor-integration", "human-surfaces", "mcp-server"]
+  "children": ["foundation-tables", "projection-mechanism", "dual-repr", "actor-integration", "human-surfaces", "mcp-server", "revaluation"]
 }
 ```
 
@@ -96,6 +96,7 @@ Every intent node has these fields:
   },
   "throughput": "number -- optional. Expected revenue or value when this intent is satisfied. Used for throughput accounting: the graph can compute total throughput of satisfying an intent by summing its value plus the value of all downstream intents it unblocks. The constraint (agent scope with most queued red intents) combined with throughput tells you which work generates the most value per unit of constraint.",
   "artifacts": "JSONB -- nullable. Only used by expression nodes. The concrete output: files created/modified, schema changes, configuration produced.",
+  "primitive_dna": "JSONB -- nullable. Only used by expression nodes. The artifact's semantic composition as primitive weights (transduction, resolution, boundary, trace). Assigned by the LLM at expression creation time.",
   "notes": "string -- optional for intents, REQUIRED for gaps and decisions. Context, reasoning, alternatives considered."
 }
 ```
@@ -201,7 +202,7 @@ Decision node structure:
 
 | Type | Meaning | Key fields |
 |------|---------|------------|
-| `expression` | A concrete artifact that satisfies one or more intents -- the record of work done. Expression nodes carry no test condition (the work is done). They require an `artifacts` JSONB field listing the files, schema, or configuration produced. Expression nodes connect to the intents they satisfy via `satisfies` edges. | `name`, `artifacts` (REQUIRED JSONB) |
+| `expression` | A concrete artifact that satisfies one or more intents -- the record of work done. Expression nodes carry no test condition (the work is done). They require an `artifacts` JSONB field and a `primitive_dna` JSONB field. Expression nodes connect to the intents they satisfy via `satisfies` edges. | `name`, `artifacts` (REQUIRED JSONB), `primitive_dna` (REQUIRED JSONB) |
 
 Expression node structure:
 
@@ -211,9 +212,23 @@ Expression node structure:
   "type": "expression",
   "name": "string -- short description of what was produced",
   "description": "string -- what was produced and how it satisfies the linked intents",
-  "artifacts": "JSONB -- the concrete output: files created/modified, schema changes, configuration"
+  "artifacts": "JSONB -- the concrete output: files created/modified, schema changes, configuration",
+  "primitive_dna": "JSONB -- the artifact's semantic composition as primitive weights"
 }
 ```
+
+The `primitive_dna` field records how this artifact combines the four semantic primitives (Transduction, Resolution, Boundary, Trace). It is assigned by the LLM at expression creation time -- the same LLM call that produces the expression also assesses its primitive composition. The format is a weight vector:
+
+```json
+{
+  "transduction": 0.6,
+  "resolution": 0.3,
+  "boundary": 0.0,
+  "trace": 0.1
+}
+```
+
+Weights are relative, not absolute -- they describe the artifact's characteristic combination, not a score. An order entry form is heavy transduction (data crossing contexts), moderate resolution (validation, stock checks), light trace. A permissions screen is almost pure boundary. The DNA is what the artifact *is*, compositionally. See `foundations.md` (Four primitives underlie all artifacts) for the full account of the primitives. See `skills/revaluation.md` for how DNA enables impact detection.
 
 An expression is not an intent -- it has no test condition because it is the artifact, not the requirement. It is not a gap -- no blocker is being surfaced. It is the graph's record of work done. Expression nodes connect to intents via `satisfies` edges (expression -> intent). One expression can satisfy multiple intents (shared implementation). One intent can be satisfied by multiple expressions (independent contributions). The `satisfies` edge is what turns intents green -- an intent with at least one incoming `satisfies` edge has been expressed.
 
@@ -376,6 +391,21 @@ Two safeguards:
 
 The pattern: LLM proposes, validator disposes. The LLM is good at interpretation. It is not reliable at referential integrity over large contexts. Split the work accordingly.
 
+### Primitive signature on intake
+
+When the LLM processes a new intent — through `clientSession`, `transduceExternal`, or `translateRepresentation` — it also produces a **primitive impact signature**: which of the four primitives (Transduction, Resolution, Boundary, Trace) this intent exercises or redefines.
+
+This piggybacks on the existing LLM call. The LLM is already classifying the intent, assigning a type, and writing a test condition. Assessing primitive impact is the same kind of judgment — "allow partial invoicing" is primarily a Resolution change; "audit all price changes" is primarily a Trace addition; "separate customer-facing from internal notes" is a Boundary change.
+
+The signature has two tiers:
+
+- **Operational** — the intent exercises a primitive as currently understood. Most intents are operational. The signature names which primitives are impacted and with what weight.
+- **Definitional** — the intent redefines what a primitive means. "All boundary decisions must be auditable" does not just touch Boundary-heavy artifacts — it changes what Boundary *is*. Definitional impacts are rare and high-consequence.
+
+The LLM classifies the tier as part of producing the signature. The classification question is: does this intent operate *within* a primitive or *on* a primitive?
+
+The primitive impact signature is not stored on the intent node. It is an ephemeral output of the intake LLM call, consumed immediately by the impact detection query (see `skills/revaluation.md`). The intent node itself carries its type, test condition, and edges — the primitive signature is a routing signal, not persistent state.
+
 ## Populating the Graph
 
 When populating a new intent graph for a project:
@@ -424,4 +454,5 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 - `graph-merge.md` -- Cross-graph collaboration: merge projections, negotiation sessions, organizational patterns
 - `mcp-server.md` -- MCP server: build instructions, tool definitions, connector setup for Excel/Word/PowerPoint
 - `ui-client.md` -- UI client: build instructions for the human-facing surfaces as an external MCP client app
+- `revaluation.md` -- Semantic revaluation: primitive DNA on expressions, impact detection through primitive resonance
 - `community.md` -- Optional. Post build reports and gaps to GitHub Discussions for multi-model feedback
