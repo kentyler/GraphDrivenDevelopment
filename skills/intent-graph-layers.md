@@ -4,6 +4,8 @@ The layer definitions for the GDD intent graph. These JSON blocks are the graph'
 
 Read `intent-graph.md` first for the model, vocabulary, and conventions.
 
+**Build discipline: verify before proceeding.** Layers are thematic groupings; build order follows `blocked-by` edges, not layer numbers. But within a build step, do not move to the next operation until the current one passes its test condition. The `blocked-by` edges encode this structurally — an intent whose dependencies are not green is not workable. During the first build, enforce this manually: run the test, confirm it passes, then proceed. See `intent-graph.md` (Build by dependency-stable layers) for the gated sequence.
+
 ### Layer 0: Foundation -- Schema and Core Types
 
 Note: The two core graph tables (nodes, edges) and the graph_memberships join table carry no temporal metadata -- no `created_at`, no `created_by`. The graph's history is its topology (supersession chains, closed gaps, satisfies edges from expression nodes), not timestamps. The graphs table carries `created_at` as administrative metadata (when the graph identity was established). The three operational tables (agents, skills, llm_providers) also carry `created_at` -- these are configuration and registry tables, not graph elements, and their creation time is useful administrative metadata that does not contradict the graph's write-only semantics.

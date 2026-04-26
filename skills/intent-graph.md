@@ -101,6 +101,24 @@ Every intent node has these fields:
 }
 ```
 
+### Test condition tiers
+
+Test conditions vary in how they are verified. The `verification` field on each intent should make the tier explicit:
+
+- **Tier A: Executable.** The test can be run mechanically — a SQL query returns expected rows, an API endpoint returns a specific response, an assertion passes. These are deterministic and automatable. Most Layer 0 and Layer 1 intents are tier A.
+  - Example: `"SELECT * FROM information_schema.columns WHERE table_schema='gdd' AND table_name='nodes'"`
+  - Example: `"POST /api/intents returns 201 with valid node structure"`
+
+- **Tier B: Inspectable.** The test requires examining structure or output, but the check is objective — a file exists, a column is present, an endpoint is reachable. Not a single query, but verifiable by inspection without judgment.
+  - Example: `"The dashboard page loads and displays red intents from queryIncomplete"`
+  - Example: `"The projection includes all blocked-by edges for the target intent"`
+
+- **Tier C: Semantic.** The test requires judgment — the LLM's output is coherent, the projection is useful, the natural language intake produces reasonable graph mutations. These cannot be fully automated. The actor (human or LLM) applies judgment at verification time.
+  - Example: `"clientSession produces valid graph mutations that capture the user's intent"`
+  - Example: `"renderHuman produces a narrative that a human can act on"`
+
+When writing test conditions, prefer tier A where possible. Use tier B for structural integration tests. Reserve tier C for operations that inherently require LLM judgment (transduction, translation, client intake). A test condition that looks like tier C but could be tier A is underspecified — sharpen it.
+
 ### The red/green model
 
 The graph is a test suite. Each intent is a test:
@@ -321,6 +339,22 @@ Work is creating graph elements — nodes and edges. There is no session contain
 
 Commit and push only when source files in the build workspace changed. Graph-only mutations and configuration changes do not produce commits.
 
+### When an expression fails its test
+
+The actor verifies the test condition before recording the expression. When the test does not pass, do not record the expression — the intent stays red. The repair path depends on what failed:
+
+1. **The code is wrong.** Fix the code. Re-run the test. When it passes, record the expression. This is the normal case — the loop continues.
+
+2. **The test condition is wrong.** The intent's test condition does not match what actually needs to be true. Supersede the intent with a corrected test condition via a `supersedes` edge. Then satisfy the new intent. The old intent remains as history.
+
+3. **The test condition is unverifiable.** You thought you could specify the test, but you cannot. The intent should have been a gap. Create a gap node recording what you know and what you cannot verify. Link the gap to the intent with a `tensions-with` edge — they are related but the gap represents the part that resists formalization.
+
+4. **A dependency is broken.** The intent's `blocked-by` dependencies are green, but the work they represent is actually insufficient or incorrect. This is a cascade — the upstream expression needs repair first. Do not attempt to fix downstream. Go to the broken upstream intent, supersede it, re-express it. The downstream intent stays red until the upstream is genuinely resolved.
+
+5. **You are stuck.** You cannot diagnose why the test fails, or the fix is beyond your current capability. Create a gap node. Record everything you know in the gap's notes — what you tried, what happened, what you suspect. The gap surfaces to whoever can resolve it. This is the andon cord in action.
+
+In all cases: do not record an expression that does not satisfy its test condition. A green intent with a failing test is worse than a red intent — it hides a lie in the graph. The graph's integrity depends on green meaning satisfied.
+
 ### Project setup
 
 Initialize a git repository and a Node.js project. The system is built in JavaScript with Express. Use any test framework you prefer (Jest, Vitest, etc.).
@@ -333,16 +367,26 @@ This system needs an Express server with REST endpoints, not just library functi
 
 Do not build by feature area. Build by dependency-stable layers and test each layer before exposing the next. The operations most at risk for subtle correctness bugs — `queryIncomplete`, dependency traversal, supersession chains, operation-to-MCP mapping — are the ones where plausible code can be structurally wrong. Layered build order with per-layer verification catches this.
 
-A sound sequence:
+A sound sequence. **Each step has a gate — do not proceed to the next step until every test condition in the current step passes.** The `blocked-by` edges in the layer intents enforce this structurally, but during the first build you must also enforce it manually: run the tests, confirm they pass, then move on. An LLM that reads all the layers and attempts a single-pass build will produce plausible but broken code. The antidote is verification between steps.
 
 1. **Schema only.** Create all tables, enums, constraints. Verify with manual inserts.
+   — GATE: every table exists, every enum is queryable, FK constraints hold. Do not write operations yet.
 2. **Core graph writes.** `createIntent`, `recordExpression` (creates expression node + satisfies edges), `createGap`, `createDecision`, `createEdge`. Verify DB state after each call.
+   — GATE: each operation inserts correct rows, edges reference valid nodes, expression nodes carry artifacts and primitive_dna. Do not build reads yet.
 3. **Core graph reads.** `queryIncomplete`, `buildProjection`, `traverseDependencies`. Test against small hand-built graph fixtures.
+   — GATE: queryIncomplete returns only red, non-superseded intents. buildProjection returns correct dependency subgraph. traverseDependencies walks edges in both directions. Do not expose HTTP yet.
 4. **HTTP admin surface.** Expose stable endpoints for the above. No MCP yet.
+   — GATE: every operation is callable via REST and returns correct results. Do not add LLM operations yet.
 5. **Provider resolution.** Implement `gdd.llm_providers`. Prove both "no active provider" (501) and "active provider exists" paths.
+   — GATE: 501 when no provider active, LLM function resolves when provider exists. Do not build clientSession yet.
 6. **clientSession.** The single orchestration path for natural language intake.
+   — GATE: natural language input produces valid graph mutations, transduction validation catches bad references. Do not add MCP yet.
 7. **MCP wrapper.** `ask` calls `clientSession`. Verify no duplicated logic.
+   — GATE: every MCP tool produces the same result as the equivalent REST call. Do not add agents yet.
 8. **Agents.** Only after the rest is stable.
+   — GATE: agent scope constrains what the agent sees, trust level constrains what it writes, trigger activates correctly.
+9. **Revaluation.** Only after agents are stable. DNA assignment, primitive signatures, impact detection.
+   — GATE: expressions carry valid primitive_dna, intake produces primitive signatures, impact detection returns correct candidates.
 
 ### Canonical test fixture
 
