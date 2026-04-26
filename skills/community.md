@@ -9,7 +9,7 @@ When enabled, the system posts build reports to the GitHub Discussions page at `
 What gets posted:
 
 - **Build reports** — after an agent completes work, a summary: which intents were expressed, which gaps were created, which model ran the agent, what was produced.
-- **Gap nodes** — gaps created during build sessions are already structured in exactly the right form: what was known, what wasn't articulable, what needs human resolution. Posting them to Discussions surfaces ambiguity for whoever can resolve it, with full context.
+- **Gap nodes** — gaps are already structured in exactly the right form: what was known, what wasn't articulable, what needs human resolution. Posting them to Discussions surfaces ambiguity for whoever can resolve it, with full context.
 
 What does NOT get posted:
 
@@ -64,7 +64,7 @@ mutation {
     repositoryId: "<repo-id>",
     categoryId: "<gaps-category-id>",
     title: "Gap: [gap name]",
-    body: "<gap notes + session context>"
+    body: "<gap notes + graph context (dependencies, neighborhood)>"
   }) {
     discussion { url }
   }

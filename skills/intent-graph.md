@@ -32,13 +32,14 @@ If PostgreSQL is not installed, help the user install it:
 - **macOS**: `brew install postgresql@16 && brew services start postgresql@16`
 - **Linux**: `sudo apt install postgresql` or equivalent for the distribution
 
-Once PostgreSQL is running, create the GDD database and schema:
+Once PostgreSQL is running, create the GDD database and schema. Run from a shell:
 
-```sql
-CREATE DATABASE gdd;
-\c gdd
-CREATE SCHEMA gdd;
+```bash
+psql -U postgres -c "CREATE DATABASE gdd;"
+psql -U postgres -d gdd -c "CREATE SCHEMA gdd;"
 ```
+
+If `psql` prompts for a password, use the password set during PostgreSQL installation. On fresh installs where the `postgres` user has no password, set one with `ALTER USER postgres PASSWORD 'yourpassword';` from `psql -U postgres`.
 
 All graph tables live in the `gdd` schema within the `gdd` database. Connection parameters should be read from environment variables with these defaults:
 
@@ -108,7 +109,7 @@ The graph is a test suite. Each intent is a test:
 
 "What to do next" = "what's red." The same red-green cycle as TDD, lifted to the intent graph.
 
-There is no status column on the node. Red/green is derived by checking for a `satisfies` edge pointing to the intent (`EXISTS (SELECT 1 FROM gdd.edges WHERE to_node = node.id AND edge_type = 'satisfies')`). An intent with no incoming `satisfies` edge is red. An intent with at least one incoming `satisfies` edge is green. A `compose` intent is green when all its `contains` children are green. Expression nodes are neither red nor green -- they are artifacts, not requirements.
+There is no status column on the node. Red/green is derived by checking for a `satisfies` edge pointing to the intent (`EXISTS (SELECT 1 FROM gdd.edges WHERE to_node = node.id AND edge_type = 'satisfies')`). An intent with no incoming `satisfies` edge is red. An intent with at least one incoming `satisfies` edge is green. A superseded node (one with an incoming `supersedes` edge) is never green, regardless of its `satisfies` edges — this causes downstream dependents to turn red naturally through the existing `blocked-by` traversal, with no cascade logic required. A `compose` intent is green when all its `contains` children are green. Expression nodes are neither red nor green -- they are artifacts, not requirements.
 
 Whether a red intent is workable right now is a structural question answered by traversing its `blocked-by` edges — if all dependencies are green, the intent is workable. This is a query result, not a stored state.
 

@@ -48,6 +48,16 @@ The critical chain is not computed by an algorithm. It is the longest chain of r
 
 This is why the system has no priority fields, no urgency scores, no scheduling algorithms. These are unnecessary when the structure itself answers the only question that matters: what to work on next.
 
+### Constraints exist across topology, not just in the present
+
+Classical TOC is reactive by necessity. In a factory, you discover the constraint by observing where the queue is longest *right now*. You can't see the next constraint until the current one is elevated and a new bottleneck emerges. The Five Focusing Steps are a loop that only ever sees one constraint at a time.
+
+The intent graph changes this. The graph encodes the future as blocked intents — red intents whose dependency chains are not yet satisfied. Because that structure is explicit and queryable, a constraint that doesn't exist yet as a bottleneck is already visible as topology: an intent deep in the blocked chain with many downstream dependents flowing through it is a future chokepoint, and you can see it now.
+
+This means the graph supports predictive constraint identification, not just reactive discovery. An actor can see that satisfying today's constraint will cause a specific downstream intent to become the next one. It can prepare — reduce that future constraint's dependency depth, split it, pre-satisfy some of its blockers — before arriving there. Constraint migration is visible in the projection before it happens.
+
+The "There is no future state" stance still holds. The graph has no roadmap, no planned-state artifact. But the topology of blocked intents *is* a structural forecast. Long-running intents — things that exist as intention but whose dependencies stretch deep — are what "the future" translates into. As present work satisfies dependencies, the future becomes present. `queryIncomplete` surfaces it. No planning ceremony required.
+
 ### Dual representation exists because actors differ
 
 The graph serves actors with fundamentally different cognitive needs. A human reading a projection needs narrative: what's done, what's next, what's blocked, what decisions were made. An LLM reading the same projection needs structure: full node data, edge types, test conditions, dependency chains — dense, relational, navigable.

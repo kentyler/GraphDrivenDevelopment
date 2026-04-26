@@ -2,7 +2,7 @@
 
 User-facing surfaces — natural language intake, application UIs — are external MCP clients that connect to the graph through the MCP server. They are not served by the backend. Any MCP-capable tool — Claude Desktop, Excel, Word, a custom web app, a CLI — can serve as a user-facing surface.
 
-Admin surfaces (dashboard, intent detail, gap surface, session log) are served by the backend. This skill file covers user-facing surfaces, which are external.
+Admin surfaces (dashboard, intent detail, gap surface) are served by the backend. This skill file covers user-facing surfaces, which are external.
 
 ## Principle
 
@@ -35,7 +35,7 @@ The building LLM chooses the technology. The only requirement is that the UI can
 
 ## Surfaces and their MCP tool mappings
 
-These are the user-facing surfaces that connect through MCP. Admin surfaces (dashboard, intent detail, gap surface, session log) are served by the backend — see Layer 5 in `intent-graph.md`.
+These are the user-facing surfaces that connect through MCP. Admin surfaces (dashboard, intent detail, gap surface) are served by the backend — see Layer 5 in `intent-graph.md`.
 
 ### Natural language intake
 
