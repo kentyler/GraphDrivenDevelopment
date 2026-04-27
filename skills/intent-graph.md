@@ -10,7 +10,7 @@ This file teaches you to build the intent graph. The intent graph is then what y
 
 This is not incidental. The system is designed so that the same structure that records its own construction is the structure through which all future work happens. There is no separate "build mode" and "use mode." The graph you populate while implementing this system is the graph you query when deciding what to work on next.
 
-This has a specific implication: the skill files you are reading are themselves a projection of intent. The intents in Layer 0 through Layer 6 (see `intent-graph-layers.md`) are not a tutorial — they are the actual graph state the system starts from. When you implement them, you are not following instructions; you are expressing intents that already exist in the representation you are building.
+This has a specific implication: the skill files you are reading are themselves a projection of intent. The intents in Layer 0 through Layer 7 (see `intent-graph-layers.md`) are not a tutorial — they are the actual graph state the system starts from. When you implement them, you are not following instructions; you are expressing intents that already exist in the representation you are building.
 
 The recursion is the point. A system that can only be specified in prose, by humans, for agents to execute, is a system with a permanent translation layer at its center. This system eliminates that layer. The representation is the specification. Any actor that can read the graph can operate the system. Any actor that can operate the system can extend it by adding intents with test conditions.
 
@@ -372,7 +372,7 @@ A sound sequence. **Each step has a gate — do not proceed to the next step unt
 1. **Schema only.** Create all tables, enums, constraints. Verify with manual inserts.
    — GATE: every table exists, every enum is queryable, FK constraints hold. Do not write operations yet.
 2. **Core graph writes.** `createIntent`, `recordExpression` (creates expression node + satisfies edges), `createGap`, `createDecision`, `createEdge`. Verify DB state after each call.
-   — GATE: each operation inserts correct rows, edges reference valid nodes, expression nodes carry artifacts and primitive_dna. Do not build reads yet.
+   — GATE: each operation inserts correct rows, edges reference valid nodes, expression nodes carry artifacts (primitive_dna column exists but is null at this stage — DNA assignment is step 9). Do not build reads yet.
 3. **Core graph reads.** `queryIncomplete`, `buildProjection`, `traverseDependencies`. Test against small hand-built graph fixtures.
    — GATE: queryIncomplete returns only red, non-superseded intents. buildProjection returns correct dependency subgraph. traverseDependencies walks edges in both directions. Do not expose HTTP yet.
 4. **HTTP admin surface.** Expose stable endpoints for the above. No MCP yet.
@@ -469,7 +469,7 @@ The self-hosting claim requires a concrete bootstrap sequence. The system must e
 
 2. **Insert root intent.** Insert the `gdd-root` node directly into `gdd.nodes`. This is the axiomatic ground — it exists before the graph operations do.
 
-3. **Insert Layer 0-6 intents and edges.** The JSON blocks in `intent-graph-layers.md` are not documentation — they are the graph's starting state. Insert every node and edge from Layers 0-6 into `gdd.nodes` and `gdd.edges`. Compose nodes carry a `children` array — for each child, create a `contains` edge (compose node -> child). Intent nodes may carry a `blocked_by` array — for each entry, create a `blocked-by` edge (intent -> target). Intent nodes may carry an `intent_ids` array (for expression operations) — these define `satisfies` edges.
+3. **Insert Layer 0-7 intents and edges.** The JSON blocks in `intent-graph-layers.md` are not documentation — they are the graph's starting state. Insert every node and edge from Layers 0-7 into `gdd.nodes` and `gdd.edges`. Compose nodes carry a `children` array — for each child, create a `contains` edge (compose node -> child). Intent nodes may carry a `blocked_by` array — for each entry, create a `blocked-by` edge (intent -> target). Intent nodes may carry an `intent_ids` array (for expression operations) — these define `satisfies` edges.
 
 4. **Implement operations, record expressions.** Work through the layers. As each operation is implemented and its test passes, create an expression node and a `satisfies` edge linking the expression to the intent. The intent turns green.
 
@@ -491,7 +491,7 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 
 ## Related Skills
 
-- `intent-graph-layers.md` -- The layer definitions (Layer 0-6 intent JSON blocks, edge summary). Read after this file.
+- `intent-graph-layers.md` -- The layer definitions (Layer 0-7 intent JSON blocks, edge summary). Read after this file.
 - `foundations.md` -- Read first. The philosophical stances that shape every design choice in this system
 - `agents.md` -- Agent definitions: scope, trust levels, activation, the agents table
 - `graph-completeness.md` -- The completeness model: red/green, mandatory tests, andon cord, no tension scores

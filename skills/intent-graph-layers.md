@@ -23,7 +23,7 @@ Note: The two core graph tables (nodes, edges) and the graph_memberships join ta
     "id": "table-nodes",
     "type": "define-table",
     "name": "Intent nodes table",
-    "description": "Stores all nodes in the global graph -- intents, compose nodes, gap nodes, decision nodes, signal nodes, and expression nodes. Each row has type, test condition, throughput, notes, artifacts, and primitive_dna. No status column -- red/green is derived by checking for incoming satisfies edges (from expression nodes to intents). test_condition is nullable: required for intent types (the verifiable claim), null for gap, decision, signal, and expression nodes, and structural for compose nodes ('all contains children have satisfies edges'). artifacts (JSONB, nullable) and primitive_dna (JSONB, nullable) are used only by expression nodes.",
+    "description": "Stores all nodes in the global graph. The type column uses the full fixed vocabulary from gdd.node_type (20 values). Intent-category types (define-table, implement-operation, etc.) carry test conditions and can be red/green. compose, gap, decision, signal, and expression are their own categories with distinct behavior. No status column -- red/green is derived by checking for incoming satisfies edges. test_condition is nullable: required for intent-category types, null for gap, decision, signal, and expression, structural for compose. artifacts (JSONB, nullable) and primitive_dna (JSONB, nullable) are used only by expression nodes.",
     "table_name": "gdd.nodes",
     "test": {
       "condition": "Table exists with columns: id, type (typed as gdd.node_type enum), name, description, test_condition (nullable), test_verification, throughput (numeric, nullable), notes (text, nullable), artifacts (JSONB, nullable), primitive_dna (JSONB, nullable). No status column. Red/green is derived by checking for incoming satisfies edges from expression nodes. Gap, decision, signal, and expression nodes have null test_condition. All other non-compose types require a non-null test_condition. Only expression nodes use the artifacts and primitive_dna columns.",
@@ -100,11 +100,11 @@ Note: The two core graph tables (nodes, edges) and the graph_memberships join ta
     "id": "type-node-type",
     "type": "define-type",
     "name": "Node type enum",
-    "description": "The six node types: intent, compose, gap, decision, signal, expression.",
+    "description": "All node types from the fixed vocabulary. Schema types: define-table, define-type, define-schema. Operation types: implement-operation, implement-endpoint, implement-traversal, implement-projection, implement-mutation. Integration types: integrate, derive, translate. Constraint types: constrain-permission, constrain-invariant. Structural types: establish-convention, define-vocabulary, compose. Plus: gap, decision, signal, expression. The system derives the base category from the type value: compose, gap, decision, signal, and expression are their own categories; everything else is an intent (has a test condition, can be red/green, can be satisfied by expressions).",
     "type_name": "gdd.node_type",
-    "values": ["intent", "compose", "gap", "decision", "signal", "expression"],
+    "values": ["define-table", "define-type", "define-schema", "implement-operation", "implement-endpoint", "implement-traversal", "implement-projection", "implement-mutation", "integrate", "derive", "translate", "constrain-permission", "constrain-invariant", "establish-convention", "define-vocabulary", "compose", "gap", "decision", "signal", "expression"],
     "test": {
-      "condition": "Enum type exists in database with all six values",
+      "condition": "Enum type exists in database with all 20 values from the fixed vocabulary",
       "verification": "SELECT enumlabel FROM pg_enum WHERE enumtypid = 'gdd.node_type'::regtype"
     }
   },

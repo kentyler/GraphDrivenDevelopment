@@ -28,7 +28,7 @@ This is the deepest design commitment in the system and it precedes everything e
 
 ### The self-hosting proof
 
-The system's first act is to describe its own construction. The intents in Layers 0 through 5 of `intent-graph.md` are not a tutorial — they are the actual graph state the system starts from. When you implement them, you are expressing intents that already exist in the representation you are building.
+The system's first act is to describe its own construction. The intents in Layers 0 through 7 of `intent-graph-layers.md` are not a tutorial — they are the actual graph state the system starts from. When you implement them, you are expressing intents that already exist in the representation you are building.
 
 This recursion is not a demo or a convenience. It is a proof. If the intent graph cannot represent the construction of an intent graph system, it cannot represent the construction of anything. The self-hosting validates the representation: the vocabulary is sufficient, the edge types capture real dependencies, the test conditions are articulable, the layers reflect actual build order.
 

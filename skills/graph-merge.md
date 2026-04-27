@@ -24,7 +24,7 @@ Edges can cross graph boundaries — a `blocked-by` edge from an intent in graph
 
 When graph A has an intent that depends on something in graph B, that's a cross-graph `blocked-by` edge. These edges are the interface between graphs — the surface area of collaboration.
 
-Cross-graph edges are created explicitly, not inferred. Both parties must acknowledge the dependency. Creating a cross-graph edge is a mutation in both graphs, recorded in both mutation logs.
+Cross-graph edges are created explicitly, not inferred. Both parties must acknowledge the dependency. Creating a cross-graph edge is a mutation in both graphs — visible through the edge itself and any expression nodes that record the collaboration.
 
 | Edge type | Cross-graph meaning |
 |-----------|-------------------|
@@ -62,9 +62,9 @@ The merge projection can be rendered in both forms:
 
 The LLM's role is translation — making the intersection legible to both parties. It does not decide the merge.
 
-## Merge sessions
+## Merge negotiation
 
-The merge itself is a session — a special kind of intent session where the intent is the collaboration.
+The merge itself is a negotiation — a structured collaboration where the intent is aligning the graphs.
 
 1. Parties convene (human, agent, or mixed)
 2. LLM reads both graphs, produces the merge projection
@@ -74,10 +74,10 @@ The merge itself is a session — a special kind of intent session where the int
    - **New cross-graph edges** → dependencies are formalized
    - **New shared intents** → work that both graphs need, created with agreed test conditions and throughput
    - **Unresolvable conflicts** → gap nodes with notes, capturing each side's position
-5. Mutations are recorded in both graphs' mutation logs
-6. Session closes with a diff showing exactly what changed in each graph
+5. Changes are recorded as graph elements in both graphs — intents created, edges added, expressions recorded. The graph topology IS the record of what changed.
+6. Negotiation closes with a diff showing the new graph elements in each graph
 
-The session records the negotiation: who was there, what each side's position was, what was decided. Full provenance.
+The graph records the negotiation through its normal mechanisms: decision nodes capture what was chosen, gap nodes capture what remains unresolved, expression nodes record what was produced. Full provenance through topology, not a separate log.
 
 ## Negotiation through structure
 

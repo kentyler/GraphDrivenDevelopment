@@ -67,10 +67,11 @@ Work is creating graph elements — nodes and edges. There is no session contain
 5. If the work produced source artifacts (code, schema, configuration), commit and push
 
 `skills/intent-graph.md` — model, vocabulary, edge types, and conventions.
-`skills/intent-graph-layers.md` — layer definitions (Layer 0-6 intent JSON blocks).
+`skills/intent-graph-layers.md` — layer definitions (Layer 0-7 intent JSON blocks).
 `skills/agents.md` — agent definitions: scope, trust levels, activation, the agents table.
 `skills/mcp-server.md` — MCP server: build instructions, tool definitions, connector setup.
 `skills/ui-client.md` — UI client: build the human surfaces as an external MCP client app.
+`skills/revaluation.md` — semantic revaluation: primitive DNA, impact detection through primitive resonance.
 
 ## Stack
 
