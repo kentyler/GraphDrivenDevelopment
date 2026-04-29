@@ -469,7 +469,7 @@ The self-hosting claim requires a concrete bootstrap sequence. The system must e
 
 2. **Insert root intent.** Insert the `gdd-root` node directly into `gdd.nodes`. This is the axiomatic ground — it exists before the graph operations do.
 
-3. **Insert Layer 0-7 intents and edges.** The JSON blocks in `intent-graph-layers.md` are not documentation — they are the graph's starting state. Insert every node and edge from Layers 0-7 into `gdd.nodes` and `gdd.edges`. Compose nodes carry a `children` array — for each child, create a `contains` edge (compose node -> child). Intent nodes may carry a `blocked_by` array — for each entry, create a `blocked-by` edge (intent -> target). Intent nodes may carry an `intent_ids` array (for expression operations) — these define `satisfies` edges.
+3. **Insert Layer -1 (system origins) and Layer 0-7 intents and edges.** First insert the Layer -1 nodes from `skills/system-origins.md` — these are founding decisions that arrive already green (intent + expression + satisfies edge inserted together). Then insert the JSON blocks from `intent-graph-layers.md`. Compose nodes carry a `children` array — for each child, create a `contains` edge (compose node -> child). Intent nodes may carry a `blocked_by` array — for each entry, create a `blocked-by` edge (intent -> target). Intent nodes may carry an `intent_ids` array (for expression operations) — these define `satisfies` edges.
 
 4. **Implement operations, record expressions.** Work through the layers. As each operation is implemented and its test passes, create an expression node and a `satisfies` edge linking the expression to the intent. The intent turns green.
 
@@ -492,6 +492,7 @@ Any actor — human, LLM agent, client, or external force — follows the same p
 ## Related Skills
 
 - `intent-graph-layers.md` -- The layer definitions (Layer 0-7 intent JSON blocks, edge summary). Read after this file.
+- `system-origins.md` -- Layer -1: founding decisions (substrate, runtime, protocol) inscribed as already-green graph citizens. Inserted during bootstrap before Layer 0-7.
 - `foundations.md` -- Read first. The philosophical stances that shape every design choice in this system
 - `agents.md` -- Agent definitions: scope, trust levels, activation, the agents table
 - `graph-completeness.md` -- The completeness model: red/green, mandatory tests, andon cord, no tension scores
