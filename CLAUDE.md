@@ -16,6 +16,16 @@ Then ask: **"Would you like to participate in the GDD community feedback loop?"*
 
 Once the system exists, the graph is your entry point — not the skill files.
 
+### Session startup
+
+Before doing anything else, check for your session bookmark:
+
+```
+GET /api/projection/session-context-{your-actor-id}/llm
+```
+
+If it exists and has expressions, read the latest one — it tells you what was done, what's next, and what's unresolved. If it doesn't exist, create one (see `skills/session-continuity.md`). At the end of every session, record a new expression on your session-context intent capturing what you did and what comes next.
+
 ### Actors
 
 Every actor — human, agent, client, or external force — runs the same loop: find what's red, read the projection, work (create nodes and edges, record expressions as expression nodes with satisfies edges), pull the andon cord if stuck, watch the graph turn green. The loop does not vary by actor type. See `skills/foundations.md` for the full account of why.
@@ -56,6 +66,14 @@ Defining an agent is the mission assignment. The human creates an agent definiti
 
 Multiple agents with overlapping scopes create `tensions-with` edges worth surfacing.
 
+### Projects are graphs, not separate systems
+
+All work lives in one global intent graph. A "project" is a named graph (`gdd.graphs`) whose memberships scope which nodes are visible. Creating a project is creating a graph and adding nodes to it. Nodes can belong to multiple graphs — a shared utility intent belongs to every project that uses it.
+
+When you want focus, project through a graph scope (`?graph_id=...`). When you want the big picture, project without a scope. Cross-cutting dependencies stay visible because they're edges in the same global graph, not hidden behind project boundaries.
+
+Do not create separate databases, schemas, or GDD instances for different projects. Scope attention with graph memberships, not infrastructure.
+
 ### Working on the graph
 
 Work is creating graph elements — nodes and edges. There is no session container.
@@ -68,10 +86,12 @@ Work is creating graph elements — nodes and edges. There is no session contain
 
 `skills/intent-graph.md` — model, vocabulary, edge types, and conventions.
 `skills/intent-graph-layers.md` — layer definitions (Layer 0-7 intent JSON blocks).
+`skills/system-origins.md` — Layer -1: founding decisions inscribed as already-green graph citizens.
 `skills/agents.md` — agent definitions: scope, trust levels, activation, the agents table.
 `skills/mcp-server.md` — MCP server: build instructions, tool definitions, connector setup.
 `skills/ui-client.md` — UI client: build the human surfaces as an external MCP client app.
 `skills/revaluation.md` — semantic revaluation: primitive DNA, impact detection through primitive resonance.
+`skills/session-continuity.md` — session bookmarks: per-actor context recovery, team-level views, the startup routine.
 
 ## Stack
 

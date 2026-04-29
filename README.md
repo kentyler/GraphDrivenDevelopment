@@ -20,7 +20,8 @@ skills/
   graph-merge.md                 Cross-graph collaboration
   mcp-server.md                  MCP server — build instructions, tool definitions, connectors
   ui-client.md                   UI client — user-facing surfaces as external MCP clients
-  community.md                   Optional — post build reports to GitHub Discussions
+  session-continuity.md           Session bookmarks — per-actor context recovery, team views
+  community.md                    Optional — post build reports to GitHub Discussions
 ```
 
 ## Getting started
