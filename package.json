@@ -1,0 +1,26 @@
+{
+  "name": "gdd",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --runInBand",
+    "bootstrap": "node src/schema/bootstrap.js",
+    "populate": "node src/schema/004-populate-graph.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.20.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2"
+  }
+}
