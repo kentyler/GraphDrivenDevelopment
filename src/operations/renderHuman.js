@@ -15,7 +15,6 @@ function renderHuman(projection) {
     const b = projection.board;
     lines.push('## Board');
     lines.push(`**${b.id}**: ${b.statement || '(no statement)'}`);
-    if (b.edge_statement) lines.push(`**Boundary:** ${b.edge_statement}`);
     if (b.latest_tension) {
       lines.push(`**Latest tension:** ${b.latest_tension.signal} (${b.latest_tension.tension_character || 'uncharacterized'})`);
     }

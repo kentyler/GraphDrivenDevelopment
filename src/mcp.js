@@ -175,7 +175,7 @@ function createMcpServer() {
   // --- Board tools ---
   server.tool('create_board', {
     id: z.string(), name: z.string(),
-    statement: z.string().optional(), edge_statement: z.string().optional(),
+    statement: z.string().optional(),
     created_by: z.string().optional()
   }, async (params) => {
     const result = await createBoard(params);

@@ -5,7 +5,6 @@ CREATE TABLE gdd.boards (
   created_at TIMESTAMP DEFAULT NOW(),
   created_by TEXT,
   statement TEXT,
-  edge_statement TEXT,
   status gdd.board_status NOT NULL DEFAULT 'active'
 );
 

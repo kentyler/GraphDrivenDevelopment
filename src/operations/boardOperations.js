@@ -1,13 +1,13 @@
 const { pool } = require('../db');
 
-async function createBoard({ id, name, statement, edge_statement, created_by }) {
+async function createBoard({ id, name, statement, created_by }) {
   if (!id || !name) throw new Error('id and name are required');
 
   const result = await pool.query(`
-    INSERT INTO gdd.boards (id, created_by, statement, edge_statement)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO gdd.boards (id, created_by, statement)
+    VALUES ($1, $2, $3)
     RETURNING *
-  `, [id, created_by || null, statement || null, edge_statement || null]);
+  `, [id, created_by || null, statement || null]);
 
   return result.rows[0];
 }
@@ -67,27 +67,13 @@ async function queryBoards({ status = null } = {}) {
   return results;
 }
 
-async function updateBoardStatement({ board_id, statement, edge_statement }) {
+async function updateBoardStatement({ board_id, statement }) {
   if (!board_id) throw new Error('board_id is required');
-  if (!statement && !edge_statement) throw new Error('At least one of statement or edge_statement is required');
+  if (!statement) throw new Error('statement is required');
 
-  const fields = [];
-  const params = [];
-  let idx = 1;
-
-  if (statement !== undefined) {
-    fields.push(`statement = $${idx++}`);
-    params.push(statement);
-  }
-  if (edge_statement !== undefined) {
-    fields.push(`edge_statement = $${idx++}`);
-    params.push(edge_statement);
-  }
-
-  params.push(board_id);
   const result = await pool.query(`
-    UPDATE gdd.boards SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *
-  `, params);
+    UPDATE gdd.boards SET statement = $1 WHERE id = $2 RETURNING *
+  `, [statement, board_id]);
 
   if (result.rows.length === 0) throw Object.assign(new Error('Board not found'), { status: 404 });
   return result.rows[0];

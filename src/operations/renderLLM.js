@@ -40,7 +40,6 @@ function renderLLM(projection) {
     board: projection.board ? {
       id: projection.board.id,
       statement: projection.board.statement,
-      edge_statement: projection.board.edge_statement,
       status: projection.board.status,
       latest_tension: projection.board.latest_tension ? {
         signal: projection.board.latest_tension.signal,

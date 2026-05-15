@@ -20,8 +20,8 @@ async function migrate() {
     // Create default board
     console.log('Creating default board...');
     await client.query(`
-      INSERT INTO gdd.boards (id, created_by, statement, edge_statement)
-      VALUES ('default-board', 'system', 'The original GDD intent graph', 'Single-instance, single-board operation')
+      INSERT INTO gdd.boards (id, created_by, statement)
+      VALUES ('default-board', 'system', 'The original GDD intent graph')
       ON CONFLICT (id) DO NOTHING
     `);
 
