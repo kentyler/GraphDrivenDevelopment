@@ -24,6 +24,8 @@ const { defineAgent } = require('./operations/defineAgent');
 const { activateAgent } = require('./operations/activateAgent');
 const { queryAgents } = require('./operations/queryAgents');
 const { createBoard, getBoard, queryBoards, updateBoardStatement, recordTensionReading, assignNodeToBoard, queryBoardNodes } = require('./operations/boardOperations');
+const { queryUnlinked } = require('./operations/queryUnlinked');
+const { setTestCondition } = require('./operations/setTestCondition');
 const { createEdgeNode, getEdgeNode, queryEdgeNodes, recordSensitivityReading, convertGapToEdge, expandEdgeNode } = require('./operations/edgeNodeOperations');
 const { pool } = require('./db');
 
@@ -51,6 +53,7 @@ app.post('/api/expressions/link', wrap(async (req) => linkExpression(req.body)))
 app.post('/api/gaps', wrap(async (req) => createGap(req.body)));
 app.post('/api/decisions', wrap(async (req) => createDecision(req.body)));
 app.post('/api/supersede', wrap(async (req) => supersedeIntent(req.body)));
+app.post('/api/intents/set-test', wrap(async (req) => setTestCondition(req.body)));
 
 // --- Query operations ---
 app.get('/api/incomplete', wrap(async (req) => {
@@ -58,6 +61,11 @@ app.get('/api/incomplete', wrap(async (req) => {
   const graph_id = req.query.graph_id || null;
   const board_id = req.query.board_id || null;
   return queryIncomplete({ workable, graph_id, board_id });
+}));
+
+app.get('/api/unlinked', wrap(async (req) => {
+  const board_id = req.query.board_id || null;
+  return queryUnlinked({ board_id });
 }));
 
 app.get('/api/dependencies/:id', wrap(async (req) => traverseDependencies(req.params.id)));

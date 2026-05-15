@@ -3,7 +3,8 @@ function renderHuman(projection) {
 
   const v = projection.vantage;
   lines.push(`# ${v.name}`);
-  lines.push(`**Status:** ${v.is_green ? 'GREEN (satisfied)' : 'RED (needs work)'}`);
+  const statusLabel = v.is_green ? 'GREEN (satisfied)' : v.has_test ? 'RED (needs work)' : 'UNTESTED (needs test before it can be satisfied)';
+  lines.push(`**Status:** ${statusLabel}`);
   if (v.is_superseded) lines.push('**Note:** This intent has been superseded.');
   if (v.test_condition) lines.push(`**Done when:** ${v.test_condition}`);
   if (v.description) lines.push(`\n${v.description}`);

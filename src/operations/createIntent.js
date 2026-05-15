@@ -16,12 +16,9 @@ async function createIntent({ id, type, name, description, test_condition, test_
     throw new Error('id, type, and name are required');
   }
 
-  // Intent types require test_condition
-  if (INTENT_TYPES.includes(type)) {
-    if (!test_condition) {
-      throw new Error(`Intent type '${type}' requires a non-empty test_condition`);
-    }
-  }
+  // Intent types accept test_condition but don't require it.
+  // An untested intent is "uncollapsed" -- it opens a possibility space
+  // that has not yet been made evaluable.
 
   // Gap, signal require notes
   if ((type === 'gap' || type === 'signal') && !notes) {

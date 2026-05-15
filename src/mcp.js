@@ -16,6 +16,8 @@ const { clientSession } = require('./operations/clientSession');
 const { queryAgents } = require('./operations/queryAgents');
 const { createGraph, addNodeToGraph, removeNodeFromGraph, queryGraphNodes, nodeGraphs } = require('./operations/graphOperations');
 const { createBoard, getBoard, queryBoards, recordTensionReading, assignNodeToBoard } = require('./operations/boardOperations');
+const { queryUnlinked } = require('./operations/queryUnlinked');
+const { setTestCondition } = require('./operations/setTestCondition');
 const { createEdgeNode, getEdgeNode, queryEdgeNodes, recordSensitivityReading, convertGapToEdge, expandEdgeNode } = require('./operations/edgeNodeOperations');
 const { pool } = require('./db');
 const fs = require('fs');
@@ -47,10 +49,10 @@ function createMcpServer() {
   });
 
   server.tool('record_expression', {
-    intent_ids: z.string(), name: z.string(),
+    intent_ids: z.string().optional(), name: z.string(),
     description: z.string().optional(), artifacts: z.string()
   }, async (params) => {
-    const intent_ids = params.intent_ids.split(',').map(s => s.trim());
+    const intent_ids = params.intent_ids ? params.intent_ids.split(',').map(s => s.trim()) : [];
     const artifacts = JSON.parse(params.artifacts);
     const result = await recordExpression({ intent_ids, name: params.name, description: params.description, artifacts });
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
@@ -58,6 +60,18 @@ function createMcpServer() {
 
   server.tool('link_expression', { expression_id: z.string(), intent_id: z.string() }, async (params) => {
     const result = await linkExpression(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('set_test_condition', {
+    intent_id: z.string(), test_condition: z.string(), test_verification: z.string().optional()
+  }, async (params) => {
+    const result = await setTestCondition(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('query_unlinked', { board_id: z.string().optional() }, async (params) => {
+    const result = await queryUnlinked({ board_id: params.board_id });
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   });
 

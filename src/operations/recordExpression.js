@@ -1,9 +1,10 @@
 const { pool } = require('../db');
 
 async function recordExpression({ intent_ids, artifacts, name, description, supersedes_id }) {
-  if (!intent_ids || !Array.isArray(intent_ids) || intent_ids.length === 0) {
-    throw new Error('intent_ids[] is required (non-empty array)');
-  }
+  // intent_ids is optional -- an unlinked expression is "produced but not
+  // yet claimed to satisfy anything". The LLM links it later when it has
+  // enough understanding to make that claim.
+  const ids = Array.isArray(intent_ids) ? intent_ids : [];
   if (!artifacts) {
     throw new Error('artifacts (JSONB) is required');
   }
@@ -15,8 +16,8 @@ async function recordExpression({ intent_ids, artifacts, name, description, supe
   try {
     await client.query('BEGIN');
 
-    // Verify all intent_ids exist
-    for (const intentId of intent_ids) {
+    // Verify all intent_ids exist (if any provided)
+    for (const intentId of ids) {
       const exists = await client.query('SELECT id FROM gdd.nodes WHERE id = $1', [intentId]);
       if (exists.rows.length === 0) {
         throw new Error(`Intent '${intentId}' does not exist`);
@@ -31,8 +32,8 @@ async function recordExpression({ intent_ids, artifacts, name, description, supe
       RETURNING *
     `, [expressionId, name, description || null, JSON.stringify(artifacts)]);
 
-    // Create satisfies edges to each intent
-    for (const intentId of intent_ids) {
+    // Create satisfies edges to each intent (if any)
+    for (const intentId of ids) {
       await client.query(`
         INSERT INTO gdd.edges (from_node, to_node, edge_type)
         VALUES ($1, $2, 'satisfies')

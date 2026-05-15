@@ -8,7 +8,8 @@ function renderLLM(projection) {
       test_condition: projection.vantage.test_condition,
       test_verification: projection.vantage.test_verification,
       is_green: projection.vantage.is_green,
-      is_superseded: projection.vantage.is_superseded
+      is_superseded: projection.vantage.is_superseded,
+      has_test: projection.vantage.has_test
     },
     upstream: projection.upstream.map(n => ({
       id: n.id, type: n.type, name: n.name,

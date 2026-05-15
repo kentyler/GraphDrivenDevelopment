@@ -84,7 +84,8 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
       ...n,
       is_green: greenSet.has(n.id),
       is_superseded: supersededSet.has(n.id),
-      is_current: !supersededSet.has(n.id)
+      is_current: !supersededSet.has(n.id),
+      has_test: !!(n.test_condition && n.test_condition.trim())
     };
   });
 

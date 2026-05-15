@@ -24,6 +24,7 @@ async function queryIncomplete({ workable = false, graph_id = null, board_id = n
     // Return only red intents whose blocked-by dependencies are all green
     query = `
       SELECT n.*,
+        (n.test_condition IS NOT NULL AND n.test_condition != '') AS has_test,
         (SELECT COUNT(*) FROM (
           WITH RECURSIVE downstream AS (
             SELECT e.from_node AS id
@@ -71,6 +72,7 @@ async function queryIncomplete({ workable = false, graph_id = null, board_id = n
     // Return all red, current intents and gaps
     query = `
       SELECT n.*,
+        (n.test_condition IS NOT NULL AND n.test_condition != '') AS has_test,
         (SELECT COUNT(*) FROM (
           WITH RECURSIVE downstream AS (
             SELECT e.from_node AS id
