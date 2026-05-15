@@ -35,8 +35,14 @@ async function createIntent({ id, type, name, description, test_condition, test_
     throw new Error("Type 'expression' requires artifacts (JSONB)");
   }
 
-  // Gap, decision, signal, expression, compose have null test_condition
-  if (['gap', 'decision', 'signal', 'expression', 'compose'].includes(type)) {
+  // Axiom requires notes and board_id
+  if (type === 'axiom') {
+    if (!notes) throw new Error("Type 'axiom' requires notes (the axiom statement)");
+    if (!board_id) throw new Error("Type 'axiom' requires a board_id");
+  }
+
+  // Gap, decision, signal, expression, compose, axiom have null test_condition
+  if (['gap', 'decision', 'signal', 'expression', 'compose', 'axiom'].includes(type)) {
     test_condition = null;
     test_verification = null;
   }

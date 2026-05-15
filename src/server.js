@@ -162,6 +162,15 @@ app.get('/api/boards/:id/nodes', wrap(async (req) => {
   const type = req.query.type || null;
   return queryBoardNodes({ board_id: req.params.id, type });
 }));
+app.get('/api/boards/:id/axioms', wrap(async (req) => {
+  const result = await pool.query(`
+    SELECT * FROM gdd.nodes
+    WHERE type = 'axiom' AND board_id = $1
+      AND id NOT IN (SELECT to_node FROM gdd.edges WHERE edge_type = 'supersedes')
+    ORDER BY created_at
+  `, [req.params.id]);
+  return result.rows;
+}));
 app.put('/api/nodes/:id/board', wrap(async (req) => assignNodeToBoard({ node_id: req.params.id, ...req.body })));
 
 // --- Edge node operations ---

@@ -206,6 +206,17 @@ function createMcpServer() {
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   });
 
+  // --- Axiom tools ---
+  server.tool('query_board_axioms', { board_id: z.string() }, async (params) => {
+    const result = await pool.query(`
+      SELECT * FROM gdd.nodes
+      WHERE type = 'axiom' AND board_id = $1
+        AND id NOT IN (SELECT to_node FROM gdd.edges WHERE edge_type = 'supersedes')
+      ORDER BY created_at
+    `, [params.board_id]);
+    return { content: [{ type: 'text', text: JSON.stringify(result.rows, null, 2) }] };
+  });
+
   // --- Edge node tools ---
   server.tool('create_edge_node', {
     name: z.string(), board_id: z.string(),

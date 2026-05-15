@@ -47,6 +47,9 @@ function renderLLM(projection) {
         tension_character: projection.board.latest_tension.tension_character
       } : null
     } : null,
+    axioms: (projection.axioms || []).map(a => ({
+      id: a.id, name: a.name, notes: a.notes, description: a.description
+    })),
     edge_nodes: (projection.edgeNodes || []).map(en => ({
       id: en.id, name: en.name, content: en.content,
       weight: en.weight, status: en.status,

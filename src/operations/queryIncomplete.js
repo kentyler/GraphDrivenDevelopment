@@ -39,7 +39,7 @@ async function queryIncomplete({ workable = false, graph_id = null, board_id = n
           SELECT id FROM downstream
         ) sub) AS downstream_count
       FROM gdd.nodes n
-      WHERE n.type NOT IN ('compose', 'expression', 'decision', 'signal')
+      WHERE n.type NOT IN ('compose', 'expression', 'decision', 'signal', 'axiom')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'satisfies')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'supersedes')
         AND NOT EXISTS (
@@ -87,7 +87,7 @@ async function queryIncomplete({ workable = false, graph_id = null, board_id = n
           SELECT id FROM downstream
         ) sub) AS downstream_count
       FROM gdd.nodes n
-      WHERE n.type NOT IN ('compose', 'expression', 'decision', 'signal')
+      WHERE n.type NOT IN ('compose', 'expression', 'decision', 'signal', 'axiom')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'satisfies')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'supersedes')
       ${graphFilter}

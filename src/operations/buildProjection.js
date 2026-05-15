@@ -122,6 +122,18 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
     }
   }
 
+  // Fetch current (non-superseded) axioms for this board
+  let axioms = [];
+  if (board) {
+    const axiomResult = await pool.query(`
+      SELECT * FROM gdd.nodes
+      WHERE type = 'axiom' AND board_id = $1
+        AND id NOT IN (SELECT to_node FROM gdd.edges WHERE edge_type = 'supersedes')
+      ORDER BY created_at
+    `, [board.id]);
+    axioms = axiomResult.rows;
+  }
+
   return {
     vantage: vantageNode,
     upstream: traversal.upstream.filter(n => filteredIds.includes(n.id)).map(n => ({
@@ -134,6 +146,7 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
     gaps: gaps.rows,
     decisions: decisions.rows,
     expressions: expressions.rows,
+    axioms: axioms,
     nodes: nodeMap,
     board: board,
     edgeNodes: edgeNodes

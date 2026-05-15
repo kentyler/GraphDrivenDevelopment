@@ -20,7 +20,8 @@ CREATE TYPE gdd.node_type AS ENUM (
   'gap',
   'decision',
   'signal',
-  'expression'
+  'expression',
+  'axiom'
 );
 
 CREATE TYPE gdd.edge_type AS ENUM (

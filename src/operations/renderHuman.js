@@ -22,6 +22,15 @@ function renderHuman(projection) {
     lines.push('');
   }
 
+  // Axioms (board constraints)
+  if (projection.axioms && projection.axioms.length > 0) {
+    lines.push('## Axioms (board constraints)');
+    projection.axioms.forEach(a => {
+      lines.push(`- **${a.name}**: ${a.notes || a.description || ''}`);
+    });
+    lines.push('');
+  }
+
   // Upstream dependencies
   if (projection.upstream.length > 0) {
     lines.push('## Dependencies (must be done first)');
