@@ -21,9 +21,12 @@ function renderLLM(projection) {
       test_condition: n.test_condition,
       is_green: n.is_green, is_superseded: n.is_superseded
     })),
-    edges: projection.edges.map(e => ({
-      from: e.from_node, to: e.to_node, type: e.edge_type
-    })),
+    edges: projection.edges.map(e => {
+      const edge = { from: e.from_node, to: e.to_node, type: e.edge_type };
+      if (e.description) edge.description = e.description;
+      if (e.created_by) edge.created_by = e.created_by;
+      return edge;
+    }),
     gaps: projection.gaps.map(g => ({
       id: g.id, name: g.name, notes: g.notes
     })),

@@ -73,6 +73,16 @@ function renderHuman(projection) {
     lines.push('');
   }
 
+  // Edges with descriptions (structural rationale)
+  const describedEdges = projection.edges.filter(e => e.description);
+  if (describedEdges.length > 0) {
+    lines.push('## Edge Rationale');
+    describedEdges.forEach(e => {
+      lines.push(`- **${e.edge_type}** ${e.from_node} -> ${e.to_node}: ${e.description}`);
+    });
+    lines.push('');
+  }
+
   // Decisions
   if (projection.decisions.length > 0) {
     lines.push('## Decisions Made');

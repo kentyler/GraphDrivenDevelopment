@@ -1,6 +1,6 @@
 const { pool } = require('../db');
 
-async function supersedeIntent({ new_intent_id, old_intent_id }) {
+async function supersedeIntent({ new_intent_id, old_intent_id, description, created_by }) {
   if (!new_intent_id || !old_intent_id) {
     throw new Error('new_intent_id and old_intent_id are required');
   }
@@ -13,10 +13,10 @@ async function supersedeIntent({ new_intent_id, old_intent_id }) {
   if (oldNode.rows.length === 0) throw new Error(`Node '${old_intent_id}' does not exist`);
 
   const result = await pool.query(`
-    INSERT INTO gdd.edges (from_node, to_node, edge_type)
-    VALUES ($1, $2, 'supersedes')
+    INSERT INTO gdd.edges (from_node, to_node, edge_type, description, created_by)
+    VALUES ($1, $2, 'supersedes', $3, $4)
     RETURNING *
-  `, [new_intent_id, old_intent_id]);
+  `, [new_intent_id, old_intent_id, description || null, created_by || null]);
 
   return result.rows[0];
 }

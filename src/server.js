@@ -9,6 +9,7 @@ const { linkExpression } = require('./operations/linkExpression');
 const { createGap } = require('./operations/createGap');
 const { createDecision } = require('./operations/createDecision');
 const { supersedeIntent } = require('./operations/supersedeIntent');
+const { supersedeEdge } = require('./operations/supersedeEdge');
 const { traverseDependencies } = require('./operations/traverseDependencies');
 const { queryIncomplete } = require('./operations/queryIncomplete');
 const { querySkills } = require('./operations/querySkills');
@@ -53,6 +54,7 @@ app.post('/api/expressions/link', wrap(async (req) => linkExpression(req.body)))
 app.post('/api/gaps', wrap(async (req) => createGap(req.body)));
 app.post('/api/decisions', wrap(async (req) => createDecision(req.body)));
 app.post('/api/supersede', wrap(async (req) => supersedeIntent(req.body)));
+app.post('/api/edges/supersede', wrap(async (req) => supersedeEdge(req.body)));
 app.post('/api/intents/set-test', wrap(async (req) => setTestCondition(req.body)));
 
 // --- Query operations ---

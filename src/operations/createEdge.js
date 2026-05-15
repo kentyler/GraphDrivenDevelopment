@@ -2,7 +2,7 @@ const { pool } = require('../db');
 
 const VALID_EDGE_TYPES = ['blocked-by', 'contains', 'tensions-with', 'refines', 'supersedes', 'closes', 'satisfies'];
 
-async function createEdge({ from_node, to_node, edge_type }) {
+async function createEdge({ from_node, to_node, edge_type, description, created_by }) {
   if (!from_node || !to_node || !edge_type) {
     throw new Error('from_node, to_node, and edge_type are required');
   }
@@ -23,10 +23,10 @@ async function createEdge({ from_node, to_node, edge_type }) {
   }
 
   const result = await pool.query(`
-    INSERT INTO gdd.edges (from_node, to_node, edge_type)
-    VALUES ($1, $2, $3)
+    INSERT INTO gdd.edges (from_node, to_node, edge_type, description, created_by)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *
-  `, [from_node, to_node, edge_type]);
+  `, [from_node, to_node, edge_type, description || null, created_by || null]);
 
   return result.rows[0];
 }

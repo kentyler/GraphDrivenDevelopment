@@ -25,10 +25,11 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
     if (!filteredIds.includes(intentId)) filteredIds.push(intentId); // always include vantage
   }
 
-  // Get all edges involving these nodes
+  // Get all current (non-superseded) edges involving these nodes
   const edges = await pool.query(`
     SELECT * FROM gdd.edges
-    WHERE from_node = ANY($1) OR to_node = ANY($1)
+    WHERE (from_node = ANY($1) OR to_node = ANY($1))
+      AND superseded_by IS NULL
   `, [filteredIds]);
 
   // Find gaps in neighborhood (connected by any edge)

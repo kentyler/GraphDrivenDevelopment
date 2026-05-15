@@ -16,7 +16,10 @@ CREATE TABLE gdd.edges (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   from_node TEXT NOT NULL REFERENCES gdd.nodes(id),
   to_node TEXT NOT NULL REFERENCES gdd.nodes(id),
-  edge_type gdd.edge_type NOT NULL
+  edge_type gdd.edge_type NOT NULL,
+  description TEXT,
+  created_by TEXT,
+  superseded_by TEXT REFERENCES gdd.edges(id)
 );
 
 CREATE TABLE gdd.graphs (

@@ -9,6 +9,7 @@ const { linkExpression } = require('./operations/linkExpression');
 const { createGap } = require('./operations/createGap');
 const { createDecision } = require('./operations/createDecision');
 const { supersedeIntent } = require('./operations/supersedeIntent');
+const { supersedeEdge } = require('./operations/supersedeEdge');
 const { queryIncomplete } = require('./operations/queryIncomplete');
 const { querySkills } = require('./operations/querySkills');
 const { buildProjection } = require('./operations/buildProjection');
@@ -91,6 +92,22 @@ function createMcpServer() {
 
   server.tool('supersede_intent', { new_intent_id: z.string(), old_intent_id: z.string() }, async (params) => {
     const result = await supersedeIntent(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('create_edge', {
+    from_node: z.string(), to_node: z.string(), edge_type: z.string(),
+    description: z.string().optional(), created_by: z.string().optional()
+  }, async (params) => {
+    const result = await createEdge(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('supersede_edge', {
+    old_edge_id: z.string(), from_node: z.string().optional(), to_node: z.string().optional(),
+    edge_type: z.string().optional(), description: z.string().optional(), created_by: z.string().optional()
+  }, async (params) => {
+    const result = await supersedeEdge(params);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   });
 
