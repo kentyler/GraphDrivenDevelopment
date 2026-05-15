@@ -23,6 +23,8 @@ const { transduceExternal } = require('./operations/transduceExternal');
 const { defineAgent } = require('./operations/defineAgent');
 const { activateAgent } = require('./operations/activateAgent');
 const { queryAgents } = require('./operations/queryAgents');
+const { createBoard, getBoard, queryBoards, updateBoardStatement, recordTensionReading, assignNodeToBoard, queryBoardNodes } = require('./operations/boardOperations');
+const { createEdgeNode, getEdgeNode, queryEdgeNodes, recordSensitivityReading, convertGapToEdge, expandEdgeNode } = require('./operations/edgeNodeOperations');
 const { pool } = require('./db');
 
 const app = express();
@@ -54,7 +56,8 @@ app.post('/api/supersede', wrap(async (req) => supersedeIntent(req.body)));
 app.get('/api/incomplete', wrap(async (req) => {
   const workable = req.query.workable === 'true';
   const graph_id = req.query.graph_id || null;
-  return queryIncomplete({ workable, graph_id });
+  const board_id = req.query.board_id || null;
+  return queryIncomplete({ workable, graph_id, board_id });
 }));
 
 app.get('/api/dependencies/:id', wrap(async (req) => traverseDependencies(req.params.id)));
@@ -135,6 +138,33 @@ app.get('/api/agents', wrap(async (req) => {
   const { status, intent_id } = req.query;
   return queryAgents({ status, intent_id });
 }));
+
+// --- Board operations ---
+app.post('/api/boards', wrap(async (req) => createBoard(req.body)));
+app.get('/api/boards', wrap(async (req) => {
+  const status = req.query.status || null;
+  return queryBoards({ status });
+}));
+app.get('/api/boards/:id', wrap(async (req) => getBoard(req.params.id)));
+app.put('/api/boards/:id', wrap(async (req) => updateBoardStatement({ board_id: req.params.id, ...req.body })));
+app.post('/api/boards/:id/tension-readings', wrap(async (req) => recordTensionReading({ board_id: req.params.id, ...req.body })));
+app.get('/api/boards/:id/nodes', wrap(async (req) => {
+  const type = req.query.type || null;
+  return queryBoardNodes({ board_id: req.params.id, type });
+}));
+app.put('/api/nodes/:id/board', wrap(async (req) => assignNodeToBoard({ node_id: req.params.id, ...req.body })));
+
+// --- Edge node operations ---
+app.post('/api/edge-nodes', wrap(async (req) => createEdgeNode(req.body)));
+app.get('/api/edge-nodes', wrap(async (req) => {
+  const board_id = req.query.board_id || null;
+  const status = req.query.status || null;
+  return queryEdgeNodes({ board_id, status });
+}));
+app.get('/api/edge-nodes/:id', wrap(async (req) => getEdgeNode(req.params.id)));
+app.post('/api/edge-nodes/:id/sensitivity-readings', wrap(async (req) => recordSensitivityReading({ edge_node_id: req.params.id, ...req.body })));
+app.post('/api/edge-nodes/convert-gap', wrap(async (req) => convertGapToEdge(req.body)));
+app.post('/api/edge-nodes/:id/expand', wrap(async (req) => expandEdgeNode({ edge_node_id: req.params.id, ...req.body })));
 
 // --- Client intake / transduction ---
 app.post('/api/client-session', wrap(async (req) => {

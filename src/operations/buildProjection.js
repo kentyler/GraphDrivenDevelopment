@@ -88,8 +88,40 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
     };
   });
 
+  // Board + edge node context
+  const vantageNode = nodeMap[intentId] || traversal.vantage;
+  let board = null;
+  let edgeNodes = [];
+
+  if (vantageNode.board_id) {
+    const boardResult = await pool.query('SELECT * FROM gdd.boards WHERE id = $1', [vantageNode.board_id]);
+    if (boardResult.rows.length > 0) {
+      board = boardResult.rows[0];
+
+      // Latest tension reading for this board
+      const tensionResult = await pool.query(
+        'SELECT * FROM gdd.tension_readings WHERE board_id = $1 ORDER BY read_at DESC LIMIT 1',
+        [board.id]
+      );
+      board.latest_tension = tensionResult.rows[0] || null;
+
+      // Active edge nodes on this board, each with latest sensitivity reading
+      const edgeResult = await pool.query(
+        "SELECT * FROM gdd.edge_nodes WHERE board_id = $1 AND status = 'active' ORDER BY created_at DESC",
+        [board.id]
+      );
+      for (const en of edgeResult.rows) {
+        const readingResult = await pool.query(
+          'SELECT * FROM gdd.sensitivity_readings WHERE edge_node_id = $1 ORDER BY read_at DESC LIMIT 1',
+          [en.id]
+        );
+        edgeNodes.push({ ...en, latest_reading: readingResult.rows[0] || null });
+      }
+    }
+  }
+
   return {
-    vantage: nodeMap[intentId] || traversal.vantage,
+    vantage: vantageNode,
     upstream: traversal.upstream.filter(n => filteredIds.includes(n.id)).map(n => ({
       ...n, is_green: greenSet.has(n.id), is_superseded: supersededSet.has(n.id)
     })),
@@ -100,7 +132,9 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
     gaps: gaps.rows,
     decisions: decisions.rows,
     expressions: expressions.rows,
-    nodes: nodeMap
+    nodes: nodeMap,
+    board: board,
+    edgeNodes: edgeNodes
   };
 }
 

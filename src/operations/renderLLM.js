@@ -32,6 +32,24 @@ function renderLLM(projection) {
     expressions: projection.expressions.map(e => ({
       id: e.id, name: e.name, description: e.description,
       artifacts: e.artifacts
+    })),
+    board: projection.board ? {
+      id: projection.board.id,
+      statement: projection.board.statement,
+      edge_statement: projection.board.edge_statement,
+      status: projection.board.status,
+      latest_tension: projection.board.latest_tension ? {
+        signal: projection.board.latest_tension.signal,
+        tension_character: projection.board.latest_tension.tension_character
+      } : null
+    } : null,
+    edge_nodes: (projection.edgeNodes || []).map(en => ({
+      id: en.id, name: en.name, content: en.content,
+      weight: en.weight, status: en.status,
+      latest_reading: en.latest_reading ? {
+        signal: en.latest_reading.signal,
+        board_impact: en.latest_reading.board_impact
+      } : null
     }))
   };
 }

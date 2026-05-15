@@ -1,6 +1,6 @@
 const { pool } = require('../db');
 
-async function createGap({ id, name, notes, blocked_by }) {
+async function createGap({ id, name, notes, blocked_by, board_id }) {
   if (!name) throw new Error('name is required');
   if (!notes) throw new Error('notes is required for gap nodes');
 
@@ -11,10 +11,10 @@ async function createGap({ id, name, notes, blocked_by }) {
     await client.query('BEGIN');
 
     const result = await client.query(`
-      INSERT INTO gdd.nodes (id, type, name, notes)
-      VALUES ($1, 'gap', $2, $3)
+      INSERT INTO gdd.nodes (id, type, name, notes, board_id)
+      VALUES ($1, 'gap', $2, $3, $4)
       RETURNING *
-    `, [nodeId, name, notes]);
+    `, [nodeId, name, notes, board_id || null]);
 
     if (blocked_by && blocked_by.length > 0) {
       for (const dep of blocked_by) {

@@ -15,7 +15,13 @@ const { buildProjection } = require('./operations/buildProjection');
 const { clientSession } = require('./operations/clientSession');
 const { queryAgents } = require('./operations/queryAgents');
 const { createGraph, addNodeToGraph, removeNodeFromGraph, queryGraphNodes, nodeGraphs } = require('./operations/graphOperations');
+const { createBoard, getBoard, queryBoards, recordTensionReading, assignNodeToBoard } = require('./operations/boardOperations');
+const { createEdgeNode, getEdgeNode, queryEdgeNodes, recordSensitivityReading, convertGapToEdge, expandEdgeNode } = require('./operations/edgeNodeOperations');
 const { pool } = require('./db');
+const fs = require('fs');
+const path = require('path');
+
+const WORKING_INTENT_FILE = path.join(process.env.HOME || process.env.USERPROFILE, '.claude', 'hooks', 'gdd-working-intent.json');
 
 function createMcpServer() {
   const server = new McpServer({ name: 'gdd', version: '1.0.0' });
@@ -133,6 +139,141 @@ function createMcpServer() {
   server.tool('node_graphs', { node_id: z.string() }, async (params) => {
     const result = await nodeGraphs(params.node_id);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  // --- Board tools ---
+  server.tool('create_board', {
+    id: z.string(), name: z.string(),
+    statement: z.string().optional(), edge_statement: z.string().optional(),
+    created_by: z.string().optional()
+  }, async (params) => {
+    const result = await createBoard(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('query_boards', { status: z.string().optional() }, async (params) => {
+    const result = await queryBoards(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('get_board', { board_id: z.string() }, async (params) => {
+    const result = await getBoard(params.board_id);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('record_tension_reading', {
+    board_id: z.string(), signal: z.string(),
+    read_by: z.string().optional(), edge_node_id: z.string().optional(),
+    tension_character: z.string().optional()
+  }, async (params) => {
+    const result = await recordTensionReading(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('assign_node_to_board', { node_id: z.string(), board_id: z.string() }, async (params) => {
+    const result = await assignNodeToBoard(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  // --- Edge node tools ---
+  server.tool('create_edge_node', {
+    name: z.string(), board_id: z.string(),
+    id: z.string().optional(), content: z.string().optional(),
+    related_nodes: z.string().optional(), weight: z.number().optional(),
+    created_by: z.string().optional()
+  }, async (params) => {
+    const related_nodes = params.related_nodes ? params.related_nodes.split(',').map(s => s.trim()) : undefined;
+    const result = await createEdgeNode({ ...params, related_nodes });
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('query_edge_nodes', { board_id: z.string().optional(), status: z.string().optional() }, async (params) => {
+    const result = await queryEdgeNodes(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('get_edge_node', { id: z.string() }, async (params) => {
+    const result = await getEdgeNode(params.id);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('record_sensitivity_reading', {
+    edge_node_id: z.string(), signal: z.string(),
+    read_by: z.string().optional(), board_impact: z.string().optional()
+  }, async (params) => {
+    const result = await recordSensitivityReading(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('convert_gap_to_edge', {
+    gap_id: z.string(), board_id: z.string(),
+    content: z.string().optional(), description: z.string().optional(),
+    failed_articulation_attempts: z.string().optional(),
+    created_by: z.string().optional()
+  }, async (params) => {
+    const failed = params.failed_articulation_attempts ? params.failed_articulation_attempts.split('|') : undefined;
+    const result = await convertGapToEdge({ ...params, failed_articulation_attempts: failed });
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('expand_edge_node', {
+    edge_node_id: z.string(), gap_name: z.string(), gap_notes: z.string(),
+    description: z.string().optional(), created_by: z.string().optional()
+  }, async (params) => {
+    const result = await expandEdgeNode(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  // --- Working-intent tools ---
+  server.tool('select_working_intent', {
+    intent_ids: z.string(),
+    graph_id: z.string().optional()
+  }, async (params) => {
+    const ids = params.intent_ids.split(',').map(s => s.trim());
+    // Validate all intents exist
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    const result = await pool.query(
+      `SELECT id, name, type FROM gdd.nodes WHERE id IN (${placeholders})`,
+      ids
+    );
+    const found = result.rows;
+    const foundIds = found.map(r => r.id);
+    const missing = ids.filter(id => !foundIds.includes(id));
+    if (missing.length > 0) {
+      return { content: [{ type: 'text', text: `Intent(s) not found: ${missing.join(', ')}` }], isError: true };
+    }
+    const state = {
+      intents: found.map(r => ({ id: r.id, name: r.name, type: r.type })),
+      graph_id: params.graph_id || null,
+      selected_at: new Date().toISOString()
+    };
+    fs.mkdirSync(path.dirname(WORKING_INTENT_FILE), { recursive: true });
+    fs.writeFileSync(WORKING_INTENT_FILE, JSON.stringify(state, null, 2));
+    return { content: [{ type: 'text', text: `Working intent set: ${found.map(r => `${r.id} (${r.name})`).join(', ')}` }] };
+  });
+
+  server.tool('clear_working_intent', {}, async () => {
+    try {
+      fs.unlinkSync(WORKING_INTENT_FILE);
+      return { content: [{ type: 'text', text: 'Working intent cleared.' }] };
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        return { content: [{ type: 'text', text: 'No working intent was set.' }] };
+      }
+      throw e;
+    }
+  });
+
+  server.tool('get_working_intent', {}, async () => {
+    try {
+      const data = JSON.parse(fs.readFileSync(WORKING_INTENT_FILE, 'utf8'));
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        return { content: [{ type: 'text', text: 'No working intent selected.' }] };
+      }
+      throw e;
+    }
   });
 
   return server;

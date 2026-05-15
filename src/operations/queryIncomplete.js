@@ -1,7 +1,24 @@
 const { pool } = require('../db');
 
-async function queryIncomplete({ workable = false, graph_id = null } = {}) {
+async function queryIncomplete({ workable = false, graph_id = null, board_id = null } = {}) {
   let query;
+  const params = [];
+  let idx = 1;
+
+  // Build filter clauses
+  let graphFilter = '';
+  if (graph_id) {
+    graphFilter = `AND EXISTS (SELECT 1 FROM gdd.graph_memberships gm WHERE gm.node_id = n.id AND gm.graph_id = $${idx})`;
+    params.push(graph_id);
+    idx++;
+  }
+
+  let boardFilter = '';
+  if (board_id) {
+    boardFilter = `AND n.board_id = $${idx}`;
+    params.push(board_id);
+    idx++;
+  }
 
   if (workable) {
     // Return only red intents whose blocked-by dependencies are all green
@@ -46,7 +63,8 @@ async function queryIncomplete({ workable = false, graph_id = null } = {}) {
             )
           )
         )
-      ${graph_id ? 'AND EXISTS (SELECT 1 FROM gdd.graph_memberships gm WHERE gm.node_id = n.id AND gm.graph_id = $1)' : ''}
+      ${graphFilter}
+      ${boardFilter}
       ORDER BY downstream_count DESC, n.id
     `;
   } else {
@@ -70,12 +88,12 @@ async function queryIncomplete({ workable = false, graph_id = null } = {}) {
       WHERE n.type NOT IN ('compose', 'expression', 'decision', 'signal')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'satisfies')
         AND NOT EXISTS (SELECT 1 FROM gdd.edges e WHERE e.to_node = n.id AND e.edge_type = 'supersedes')
-      ${graph_id ? 'AND EXISTS (SELECT 1 FROM gdd.graph_memberships gm WHERE gm.node_id = n.id AND gm.graph_id = $1)' : ''}
+      ${graphFilter}
+      ${boardFilter}
       ORDER BY downstream_count DESC, n.id
     `;
   }
 
-  const params = graph_id ? [graph_id] : [];
   const result = await pool.query(query, params);
   return result.rows;
 }

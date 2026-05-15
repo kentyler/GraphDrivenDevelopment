@@ -15,6 +15,7 @@
     .stat.red .number { color: #f85149; }
     .stat.green .number { color: #3fb950; }
     .stat.gap .number { color: #d29922; }
+    .stat.edge .number { color: #1f6feb; }
     .section { margin-bottom: 24px; }
     .section h3 { color: #c9d1d9; margin-bottom: 8px; font-size: 16px; }
     .intent-list { list-style: none; }
@@ -27,10 +28,18 @@
     .badge.workable { background: #3fb95022; color: #3fb950; }
     .badge.blocked { background: #8b949e22; color: #8b949e; }
     .badge.gap { background: #d2992222; color: #d29922; }
+    .badge.edge-active { background: #1f6feb22; color: #1f6feb; }
+    .badge.edge-expanded { background: #d2992222; color: #d29922; }
+    .badge.edge-converted { background: #8b949e22; color: #8b949e; }
     #detail-panel { display: none; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; margin-top: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.5; max-height: 500px; overflow-y: auto; }
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
     .tab { padding: 8px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; }
     .tab.active { background: #1f2937; border-bottom-color: #1f2937; color: #58a6ff; }
+    .board-filter { margin-bottom: 16px; }
+    .board-filter select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; font-size: 13px; }
+    .board-context { background: #161b22; border: 1px solid #1f6feb44; border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 13px; display: none; }
+    .board-context .board-title { color: #1f6feb; font-weight: 600; }
+    .board-context .board-boundary { color: #8b949e; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -41,12 +50,25 @@
     <div class="stat red"><div class="number" id="red-count">-</div><div class="label">Red Intents</div></div>
     <div class="stat green"><div class="number" id="green-count">-</div><div class="label">Green</div></div>
     <div class="stat gap"><div class="number" id="gap-count">-</div><div class="label">Gaps</div></div>
+    <div class="stat edge"><div class="number" id="edge-count">-</div><div class="label">Edge Nodes</div></div>
+  </div>
+
+  <div class="board-filter">
+    <select id="board-select" onchange="onBoardChange()">
+      <option value="">All boards</option>
+    </select>
+  </div>
+
+  <div class="board-context" id="board-context">
+    <div class="board-title" id="board-title"></div>
+    <div class="board-boundary" id="board-boundary"></div>
   </div>
 
   <div class="tabs">
     <div class="tab active" onclick="showTab('workable')">Workable</div>
     <div class="tab" onclick="showTab('all')">All Red</div>
     <div class="tab" onclick="showTab('gaps')">Gaps</div>
+    <div class="tab" onclick="showTab('edges')">Edges</div>
   </div>
 
   <div class="section">
@@ -57,27 +79,57 @@
 
   <script>
     let currentTab = 'workable';
+    let currentBoardId = '';
 
     async function load() {
-      const [allRed, workable] = await Promise.all([
-        fetch('/api/incomplete').then(r => r.json()),
-        fetch('/api/incomplete?workable=true').then(r => r.json())
+      const boardFilter = currentBoardId ? `&board_id=${currentBoardId}` : '';
+      const [allRed, workable, edgeNodes, boards] = await Promise.all([
+        fetch('/api/incomplete' + (currentBoardId ? `?board_id=${currentBoardId}` : '')).then(r => r.json()),
+        fetch('/api/incomplete?workable=true' + boardFilter).then(r => r.json()),
+        fetch('/api/edge-nodes' + (currentBoardId ? `?board_id=${currentBoardId}` : '')).then(r => r.json()),
+        fetch('/api/boards').then(r => r.json())
       ]);
 
-      const totalNodes = await fetch('/api/nodes/gdd-root').then(r => r.json()).catch(() => null);
       const gaps = allRed.filter(n => n.type === 'gap');
       const intents = allRed.filter(n => n.type !== 'gap');
 
       document.getElementById('red-count').textContent = intents.length;
       document.getElementById('gap-count').textContent = gaps.length;
+      document.getElementById('edge-count').textContent = edgeNodes.filter(e => e.status === 'active').length;
+      document.getElementById('green-count').textContent = '~' + Math.max(0, 56 - allRed.length - 8);
 
-      // Estimate green count from total graph
-      const allNodes = await fetch('/api/incomplete').then(r => r.json());
-      // rough: we know total nodes from DB
-      document.getElementById('green-count').textContent = '~' + (56 - allRed.length - 8); // subtract compose/expr/dec/sig types
+      // Populate board filter
+      const select = document.getElementById('board-select');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">All boards</option>';
+      boards.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.id + (b.statement ? ': ' + b.statement.slice(0, 40) : '');
+        select.appendChild(opt);
+      });
+      select.value = currentVal || '';
 
-      window._data = { allRed, workable, gaps, intents };
+      // Show board context if filtered
+      const ctx = document.getElementById('board-context');
+      if (currentBoardId) {
+        const board = boards.find(b => b.id === currentBoardId);
+        if (board) {
+          ctx.style.display = 'block';
+          document.getElementById('board-title').textContent = board.statement || board.id;
+          document.getElementById('board-boundary').textContent = board.edge_statement ? 'Boundary: ' + board.edge_statement : '';
+        }
+      } else {
+        ctx.style.display = 'none';
+      }
+
+      window._data = { allRed, workable, gaps, intents, edgeNodes };
       renderList();
+    }
+
+    function onBoardChange() {
+      currentBoardId = document.getElementById('board-select').value;
+      load();
     }
 
     function showTab(tab) {
@@ -95,6 +147,13 @@
         items = window._data.workable.map(n => ({ ...n, badge: 'workable', badgeText: 'WORKABLE' }));
       } else if (currentTab === 'gaps') {
         items = window._data.gaps.map(n => ({ ...n, badge: 'gap', badgeText: 'GAP' }));
+      } else if (currentTab === 'edges') {
+        items = window._data.edgeNodes.map(n => ({
+          ...n,
+          badge: n.status === 'active' ? 'edge-active' : n.status === 'expanded' ? 'edge-expanded' : 'edge-converted',
+          badgeText: n.status === 'active' ? 'EDGE' : n.status === 'expanded' ? 'EXPANDED' : 'CONVERTED',
+          isEdge: true
+        }));
       } else {
         const workableIds = new Set(window._data.workable.map(n => n.id));
         items = window._data.allRed.map(n => ({
@@ -104,13 +163,25 @@
         }));
       }
 
-      list.innerHTML = items.map(n => `
-        <li class="intent-item" onclick="showDetail('${n.id}')">
-          <span class="badge ${n.badge}">${n.badgeText}</span>
-          <span class="name">${n.name}</span>
-          <div class="meta">${n.id} · unblocks ${n.downstream_count || 0} · ${n.type}</div>
-        </li>
-      `).join('');
+      list.innerHTML = items.map(n => {
+        if (n.isEdge) {
+          const reading = n.latest_reading ? ' — ' + n.latest_reading.signal : '';
+          return `
+            <li class="intent-item" onclick="showEdgeDetail('${n.id}')">
+              <span class="badge ${n.badge}">${n.badgeText}</span>
+              <span class="name">${n.name}</span>
+              <div class="meta">${n.id} · weight: ${n.weight || '?'} · board: ${n.board_id}${reading}</div>
+            </li>
+          `;
+        }
+        return `
+          <li class="intent-item" onclick="showDetail('${n.id}')">
+            <span class="badge ${n.badge}">${n.badgeText}</span>
+            <span class="name">${n.name}</span>
+            <div class="meta">${n.id} · unblocks ${n.downstream_count || 0} · ${n.type}</div>
+          </li>
+        `;
+      }).join('');
     }
 
     async function showDetail(id) {
@@ -120,6 +191,39 @@
       const res = await fetch(`/api/projection/${id}/human`);
       const data = await res.json();
       panel.textContent = data.markdown;
+    }
+
+    async function showEdgeDetail(id) {
+      const panel = document.getElementById('detail-panel');
+      panel.style.display = 'block';
+      panel.textContent = 'Loading...';
+      const res = await fetch(`/api/edge-nodes/${id}`);
+      const data = await res.json();
+      let text = `# Edge Node: ${data.name}\n`;
+      text += `Status: ${data.status}\n`;
+      text += `Board: ${data.board_id}\n`;
+      if (data.content) text += `\n${data.content}\n`;
+      if (data.weight) text += `\nWeight: ${data.weight}`;
+      if (data.related_nodes && data.related_nodes.length) text += `\nRelated: ${data.related_nodes.join(', ')}`;
+      if (data.sensitivity_readings.length) {
+        text += '\n\n## Sensitivity Readings';
+        data.sensitivity_readings.forEach(r => {
+          text += `\n- [${r.board_impact || '?'}] ${r.signal} (${r.read_by || 'unknown'}, ${new Date(r.read_at).toLocaleDateString()})`;
+        });
+      }
+      if (data.expansion_events.length) {
+        text += '\n\n## Expansion Events';
+        data.expansion_events.forEach(e => {
+          text += `\n- ${e.description} -> gap: ${e.new_gap_node_id}`;
+        });
+      }
+      if (data.conversion_events.length) {
+        text += '\n\n## Conversion Events';
+        data.conversion_events.forEach(e => {
+          text += `\n- ${e.description} (from gap: ${e.original_gap_node_id})`;
+        });
+      }
+      panel.textContent = text;
     }
 
     load();

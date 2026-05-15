@@ -10,7 +10,7 @@ const INTENT_TYPES = [
   'establish-convention', 'define-vocabulary'
 ];
 
-async function createIntent({ id, type, name, description, test_condition, test_verification, notes, artifacts, blocked_by }) {
+async function createIntent({ id, type, name, description, test_condition, test_verification, notes, artifacts, blocked_by, board_id }) {
   // Validation
   if (!id || !type || !name) {
     throw new Error('id, type, and name are required');
@@ -49,10 +49,10 @@ async function createIntent({ id, type, name, description, test_condition, test_
     await client.query('BEGIN');
 
     const result = await client.query(`
-      INSERT INTO gdd.nodes (id, type, name, description, test_condition, test_verification, notes, artifacts)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO gdd.nodes (id, type, name, description, test_condition, test_verification, notes, artifacts, board_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [id, type, name, description || null, test_condition || null, test_verification || null, notes || null, artifacts ? JSON.stringify(artifacts) : null]);
+    `, [id, type, name, description || null, test_condition || null, test_verification || null, notes || null, artifacts ? JSON.stringify(artifacts) : null, board_id || null]);
 
     // Create blocked-by edges if provided
     if (blocked_by && blocked_by.length > 0) {

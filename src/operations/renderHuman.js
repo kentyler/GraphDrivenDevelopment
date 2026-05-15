@@ -9,6 +9,18 @@ function renderHuman(projection) {
   if (v.description) lines.push(`\n${v.description}`);
   lines.push('');
 
+  // Board context
+  if (projection.board) {
+    const b = projection.board;
+    lines.push('## Board');
+    lines.push(`**${b.id}**: ${b.statement || '(no statement)'}`);
+    if (b.edge_statement) lines.push(`**Boundary:** ${b.edge_statement}`);
+    if (b.latest_tension) {
+      lines.push(`**Latest tension:** ${b.latest_tension.signal} (${b.latest_tension.tension_character || 'uncharacterized'})`);
+    }
+    lines.push('');
+  }
+
   // Upstream dependencies
   if (projection.upstream.length > 0) {
     lines.push('## Dependencies (must be done first)');
@@ -46,6 +58,16 @@ function renderHuman(projection) {
     lines.push('## Open Gaps (blockers needing decisions)');
     unresolvedGaps.forEach(g => {
       lines.push(`- **${g.name}**: ${g.notes || ''}`);
+    });
+    lines.push('');
+  }
+
+  // Edge Nodes (boundary markers — not to be resolved)
+  if (projection.edgeNodes && projection.edgeNodes.length > 0) {
+    lines.push('## Edge Nodes (boundaries — do not resolve)');
+    projection.edgeNodes.forEach(en => {
+      const reading = en.latest_reading ? ` — ${en.latest_reading.signal} [${en.latest_reading.board_impact || '?'}]` : '';
+      lines.push(`- **${en.name}**: ${en.content || ''}${reading}`);
     });
     lines.push('');
   }
