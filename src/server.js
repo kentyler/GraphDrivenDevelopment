@@ -167,7 +167,7 @@ app.get('/api/boards/:id/axioms', wrap(async (req) => {
     SELECT * FROM gdd.nodes
     WHERE type = 'axiom' AND board_id = $1
       AND id NOT IN (SELECT to_node FROM gdd.edges WHERE edge_type = 'supersedes')
-    ORDER BY created_at
+    ORDER BY name
   `, [req.params.id]);
   return result.rows;
 }));

@@ -129,7 +129,7 @@ async function buildProjection(intentId, { graph_id = null } = {}) {
       SELECT * FROM gdd.nodes
       WHERE type = 'axiom' AND board_id = $1
         AND id NOT IN (SELECT to_node FROM gdd.edges WHERE edge_type = 'supersedes')
-      ORDER BY created_at
+      ORDER BY name
     `, [board.id]);
     axioms = axiomResult.rows;
   }

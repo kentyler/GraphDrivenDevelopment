@@ -42,7 +42,8 @@ function createMcpServer() {
   server.tool('create_intent', {
     id: z.string(), type: z.string(), name: z.string(),
     description: z.string().optional(), test_condition: z.string().optional(),
-    test_verification: z.string().optional(), blocked_by: z.string().optional()
+    test_verification: z.string().optional(), blocked_by: z.string().optional(),
+    build_instructions: z.string().optional()
   }, async (params) => {
     const blocked_by = params.blocked_by ? params.blocked_by.split(',').map(s => s.trim()) : undefined;
     const result = await createIntent({ ...params, blocked_by });

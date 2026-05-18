@@ -9,7 +9,8 @@ CREATE TABLE gdd.nodes (
   test_condition TEXT,
   test_verification TEXT,
   notes TEXT,
-  artifacts JSONB
+  artifacts JSONB,
+  build_instructions TEXT
 );
 
 CREATE TABLE gdd.edges (
