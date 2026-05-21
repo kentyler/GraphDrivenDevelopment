@@ -202,6 +202,9 @@ app.post('/api/transduce-external', wrap(async (req) => {
 const { mountMcp } = require('./mcp');
 mountMcp(app);
 
+// --- Scheduler ---
+const { startScheduler } = require('./scheduler');
+
 const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
@@ -209,6 +212,7 @@ if (require.main === module) {
     console.log(`GDD server running on http://localhost:${PORT}`);
     console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
     console.log(`Dashboard: http://localhost:${PORT}/`);
+    startScheduler();
   });
 }
 

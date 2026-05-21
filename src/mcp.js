@@ -289,8 +289,8 @@ function createMcpServer() {
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   });
 
-  server.tool('broadcast_red_nodes', { graph_id: z.string().optional() }, async (params) => {
-    const result = await broadcastRedNodes({ graph_id: params.graph_id });
+  server.tool('broadcast_red_nodes', { graph_id: z.string().optional(), repeat_hours: z.number().optional() }, async (params) => {
+    const result = await broadcastRedNodes({ graph_id: params.graph_id, repeat_hours: params.repeat_hours });
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   });
 

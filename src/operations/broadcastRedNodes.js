@@ -17,15 +17,28 @@ function createTransport() {
   });
 }
 
-async function broadcastRedNodes({ graph_id } = {}) {
+async function broadcastRedNodes({ graph_id, repeat_hours } = {}) {
   const peers = loadPeers();
   if (peers.length === 0) return { sent: 0, reason: 'no peers' };
 
   const transport = createTransport();
   if (!transport) return { sent: 0, reason: 'no SMTP config' };
 
-  const redNodes = await queryIncomplete({ workable: true, graph_id });
+  let redNodes = await queryIncomplete({ workable: true, graph_id });
   if (redNodes.length === 0) return { sent: 0, reason: 'no red nodes' };
+
+  // Dedup: filter out nodes broadcast within the repeat window
+  if (repeat_hours) {
+    const recent = await pool.query(`
+      SELECT DISTINCT unnest(intent_ids) AS intent_id
+      FROM gdd.peer_messages
+      WHERE direction = 'sent' AND message_type = 'broadcast'
+        AND created_at > NOW() - ($1 || ' hours')::interval
+    `, [String(repeat_hours)]);
+    const recentIds = new Set(recent.rows.map(r => r.intent_id));
+    redNodes = redNodes.filter(n => !recentIds.has(n.id));
+    if (redNodes.length === 0) return { sent: 0, reason: 'all nodes recently broadcast' };
+  }
 
   // Abstract: only share what a peer needs to help
   const descriptions = redNodes.map(n => ({

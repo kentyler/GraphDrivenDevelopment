@@ -4,13 +4,14 @@ const { pool } = require('../src/db');
 const { loadPeers, savePeers, addPeer, removePeer, listPeers, PEERS_FILE } = require('../src/operations/peerDirectory');
 const { broadcastRedNodes } = require('../src/operations/broadcastRedNodes');
 const { receivePeerMessages } = require('../src/operations/receivePeerMessages');
+const { startScheduler } = require('../src/scheduler');
 
 // Use a temp file for peer directory tests
 const TEMP_PEERS = path.join(__dirname, 'test-peers.json');
 const origCwd = process.cwd;
 
 async function cleanup() {
-  await pool.query("DELETE FROM gdd.peer_messages WHERE peer_id LIKE 'test-%' OR subject LIKE 'test-%'");
+  await pool.query("DELETE FROM gdd.peer_messages WHERE peer_id LIKE 'test-%' OR subject LIKE 'test-%' OR peer_id = 'test-dedup'");
   try { fs.unlinkSync(TEMP_PEERS); } catch (e) {}
 }
 
@@ -72,6 +73,68 @@ describe('receivePeerMessages', () => {
     expect(result.received).toBe(0);
     expect(result.reason).toBe('no IMAP config');
     if (origHost) process.env.GDD_IMAP_HOST = origHost;
+  });
+});
+
+describe('broadcastRedNodes dedup', () => {
+  test('repeat_hours filters out recently-sent nodes', async () => {
+    // Insert a fake broadcast sent 1 hour ago with specific intent IDs
+    await pool.query(`
+      INSERT INTO gdd.peer_messages (direction, message_type, peer_id, subject, content, intent_ids, created_at)
+      VALUES ('sent', 'broadcast', 'test-dedup', 'test-dedup-subject', '{}', ARRAY['intent-dedup-1','intent-dedup-2'], NOW() - INTERVAL '1 hour')
+    `);
+
+    // With repeat_hours=24, those intents should be filtered out
+    // broadcastRedNodes will still return early for other reasons (no peers/SMTP),
+    // but we can verify the dedup query works by checking the DB directly
+    const recent = await pool.query(`
+      SELECT DISTINCT unnest(intent_ids) AS intent_id
+      FROM gdd.peer_messages
+      WHERE direction = 'sent' AND message_type = 'broadcast'
+        AND created_at > NOW() - ('24 hours')::interval
+        AND peer_id = 'test-dedup'
+    `);
+    expect(recent.rows.map(r => r.intent_id)).toEqual(
+      expect.arrayContaining(['intent-dedup-1', 'intent-dedup-2'])
+    );
+
+    // With repeat_hours=0.001 (basically now), nothing should be filtered
+    const tooOld = await pool.query(`
+      SELECT DISTINCT unnest(intent_ids) AS intent_id
+      FROM gdd.peer_messages
+      WHERE direction = 'sent' AND message_type = 'broadcast'
+        AND created_at > NOW() - ('0.001 hours')::interval
+        AND peer_id = 'test-dedup'
+    `);
+    // The 1-hour-old record should NOT appear in a 0.001h (3.6s) window
+    expect(tooOld.rows).toHaveLength(0);
+  });
+});
+
+describe('scheduler', () => {
+  test('returns null when disabled (no env vars)', () => {
+    const origInterval = process.env.GDD_BROADCAST_INTERVAL_HOURS;
+    const origRepeat = process.env.GDD_BROADCAST_REPEAT_HOURS;
+    delete process.env.GDD_BROADCAST_INTERVAL_HOURS;
+    delete process.env.GDD_BROADCAST_REPEAT_HOURS;
+
+    const result = startScheduler();
+    expect(result).toBeNull();
+
+    // Restore
+    if (origInterval) process.env.GDD_BROADCAST_INTERVAL_HOURS = origInterval;
+    if (origRepeat) process.env.GDD_BROADCAST_REPEAT_HOURS = origRepeat;
+  });
+
+  test('returns null when interval is 0', () => {
+    const origInterval = process.env.GDD_BROADCAST_INTERVAL_HOURS;
+    process.env.GDD_BROADCAST_INTERVAL_HOURS = '0';
+
+    const result = startScheduler();
+    expect(result).toBeNull();
+
+    if (origInterval) process.env.GDD_BROADCAST_INTERVAL_HOURS = origInterval;
+    else delete process.env.GDD_BROADCAST_INTERVAL_HOURS;
   });
 });
 
