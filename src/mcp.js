@@ -20,6 +20,10 @@ const { createBoard, getBoard, queryBoards, recordTensionReading, assignNodeToBo
 const { queryUnlinked } = require('./operations/queryUnlinked');
 const { setTestCondition } = require('./operations/setTestCondition');
 const { createEdgeNode, getEdgeNode, queryEdgeNodes, recordSensitivityReading, convertGapToEdge, expandEdgeNode } = require('./operations/edgeNodeOperations');
+const { listPeers, addPeer, removePeer } = require('./operations/peerDirectory');
+const { broadcastRedNodes } = require('./operations/broadcastRedNodes');
+const { receivePeerMessages } = require('./operations/receivePeerMessages');
+const { respondToPeerBroadcast } = require('./operations/respondToPeerBroadcast');
 const { pool } = require('./db');
 const fs = require('fs');
 const path = require('path');
@@ -265,6 +269,55 @@ function createMcpServer() {
   }, async (params) => {
     const result = await expandEdgeNode(params);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  // --- Peer network tools ---
+  server.tool('list_peers', {}, async () => {
+    const result = listPeers();
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('add_peer', {
+    id: z.string(), name: z.string(), email: z.string()
+  }, async (params) => {
+    const result = addPeer(params);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('remove_peer', { peer_id: z.string() }, async (params) => {
+    const result = removePeer(params.peer_id);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('broadcast_red_nodes', { graph_id: z.string().optional() }, async (params) => {
+    const result = await broadcastRedNodes({ graph_id: params.graph_id });
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('check_peer_messages', {}, async () => {
+    const result = await receivePeerMessages();
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('respond_to_broadcast', { message_id: z.string() }, async (params) => {
+    const result = await respondToPeerBroadcast(params.message_id);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  });
+
+  server.tool('view_peer_messages', {
+    direction: z.string().optional(),
+    message_type: z.string().optional(),
+    peer_id: z.string().optional()
+  }, async (params) => {
+    const conditions = [];
+    const values = [];
+    let idx = 1;
+    if (params.direction) { conditions.push(`direction = $${idx++}`); values.push(params.direction); }
+    if (params.message_type) { conditions.push(`message_type = $${idx++}`); values.push(params.message_type); }
+    if (params.peer_id) { conditions.push(`peer_id = $${idx++}`); values.push(params.peer_id); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await pool.query(`SELECT * FROM gdd.peer_messages ${where} ORDER BY created_at DESC`, values);
+    return { content: [{ type: 'text', text: JSON.stringify(result.rows, null, 2) }] };
   });
 
   // --- Working-intent tools ---
